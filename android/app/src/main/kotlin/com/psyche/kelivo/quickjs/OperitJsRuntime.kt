@@ -89,6 +89,13 @@ class OperitJsRuntime(
         return JSONObject().put("ok", true).put("usable", cfg.isUsable).toString()
     }
 
+    /**
+     * One entry per package, each carrying full OpenAI-style function schemas
+     * built from the package METADATA (name / description / parameters).
+     *
+     * Tool names are exposed as `<package>:<tool>` to match Operit exactly, so
+     * prompts and examples written for Operit keep working.
+     */
     private fun listTools(): String {
         val out = JSONArray()
         for (name in packageNames()) {
@@ -96,19 +103,53 @@ class OperitJsRuntime(
             val tools = JSONArray()
             meta.optJSONArray("tools")?.let { arr ->
                 for (i in 0 until arr.length()) {
-                    arr.optJSONObject(i)?.optString("name")?.takeIf { it.isNotEmpty() }?.let(tools::put)
+                    val entry = arr.optJSONObject(i) ?: continue
+                    val toolName = entry.optString("name")
+                    if (toolName.isEmpty()) continue
+                    tools.put(buildToolSchema(name, toolName, entry))
                 }
             }
-            out.put(
-                JSONObject()
-                    .put("package", name)
-                    .put("enabledByDefault", meta.optBoolean("enabledByDefault", false))
-                    .put("category", meta.optString("category", ""))
-                    .put("tools", tools)
-            )
+            out.put(JSONObject().put("package", name).put("tools", tools))
         }
         return out.toString()
     }
+
+    private fun buildToolSchema(pkg: String, tool: String, entry: JSONObject): JSONObject {
+        val props = JSONObject()
+        val required = JSONArray()
+        entry.optJSONArray("parameters")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val p = arr.optJSONObject(i) ?: continue
+                val pName = p.optString("name")
+                if (pName.isEmpty()) continue
+                props.put(
+                    pName,
+                    JSONObject()
+                        .put("type", p.optString("type", "string"))
+                        .put("description", localized(p.opt("description"))),
+                )
+                if (p.optBoolean("required", false)) required.put(pName)
+            }
+        }
+        return JSONObject()
+            .put("name", "$pkg:$tool")
+            .put("description", localized(entry.opt("description")))
+            .put(
+                "parameters",
+                JSONObject()
+                    .put("type", "object")
+                    .put("properties", props)
+                    .put("required", required),
+            )
+    }
+
+    /** METADATA descriptions are either a plain string or `{zh, en}`. */
+    private fun localized(value: Any?): String = when (value) {
+        is String -> value
+        is JSONObject -> value.optString("zh").ifEmpty { value.optString("en") }
+        else -> ""
+    }
+
 
     private fun callTool(pkg: String, tool: String, argsJson: String): String {
         val rt = runtime ?: return err("runtime not configured")

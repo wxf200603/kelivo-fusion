@@ -28,6 +28,7 @@ import 'ask_user_interaction_service.dart';
 import 'built_in_tool_names.dart';
 import 'local_tools_service.dart';
 import 'tool_approval_service.dart';
+import '../../../core/services/operit/operit_js_tools_service.dart';
 
 /// 工具调用处理服务
 ///
@@ -320,6 +321,15 @@ class ToolHandlerService {
     if (supportsTools && workspaceContext != null) {
       toolDefs.addAll(_workspaceTools().buildToolDefinitions(workspaceContext));
     }
+    // Operit JS tool packages (QuickJS). Schemas are cached after warmUp();
+    // the first call kicks it off in the background so this stays synchronous.
+    if (supportsTools) {
+      final operitJs = OperitJsToolsService.instance;
+      if (!operitJs.isReady && !operitJs.isWarming) {
+        unawaited(operitJs.warmUp());
+      }
+      toolDefs.addAll(operitJs.definitions);
+    }
 
     final overrides = settings.toolSchemaOverrides;
     if (overrides.isEmpty) return toolDefs;
@@ -483,6 +493,15 @@ class ToolHandlerService {
           );
         }
 
+        if (OperitJsToolsService.instance.owns(name)) {
+          return await OperitJsToolsService.instance.handle(
+            name,
+            args,
+            approvalService: approvalService,
+            toolCallId: toolCallId,
+            conversationId: conversationId,
+          );
+        }
         if (routes.containsExposedName(name)) {
           return await approveAndExecuteMcp(name, args, toolCallId: toolCallId);
         }

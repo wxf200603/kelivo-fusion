@@ -93,6 +93,7 @@ import 'shared/widgets/restore_progress_screen.dart';
 import 'shared/widgets/restore_outcome_notice.dart';
 import 'shared/widgets/update_required_screen.dart';
 import 'package:system_fonts/system_fonts.dart';
+import 'dart:async' show unawaited;
 import 'dart:io'
     show
         Directory,
@@ -102,6 +103,7 @@ import 'dart:io'
         stderr; // kept for global override usage inside provider
 import 'core/services/mobile_background.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/operit/operit_js_tools_service.dart';
 import 'features/home/controllers/chat_actions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -163,6 +165,13 @@ Future<void> main() async {
       }
       FlutterLogger.installGlobalHandlers();
       _initializeAndroidDisplayMode();
+      // Warm up the Operit JS tool bridge in the background so `operit_*`
+      // tools are already known to the model on the first turn. It fails
+      // quietly (and is retried by the tool loop) when the proot workspace
+      // is not installed yet, and this channel only exists on Android.
+      if (Platform.isAndroid) {
+        unawaited(OperitJsToolsService.instance.warmUp());
+      }
       final appDataDirectory = await AppDirectories.getAppDataDirectory();
       final RestoreReceipt? restoreOutcome;
       RestoreBusinessLease? businessLease;
