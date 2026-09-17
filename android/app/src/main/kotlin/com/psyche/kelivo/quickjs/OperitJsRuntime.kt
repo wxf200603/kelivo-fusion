@@ -92,6 +92,7 @@ class OperitJsRuntime(
         loaded.clear()
         val (rt, _) = QuickJsHostEnvironment.create(KelivoWorkspaceHost(context, cfg))
         rt.installCompatLayerOrThrow()
+        installHostBootstrap(rt, cfg)
         config = cfg
         runtime = rt
         diag("configure: usable=${cfg.isUsable} rootfs=${cfg.rootfsDir}")
@@ -227,6 +228,101 @@ class OperitJsRuntime(
     private fun diag(message: String) {
         runCatching { File(context.filesDir, DIAG_FILE).appendText("$message\n") }
     }
+
+    /**
+     * Injects the `Tools.*` namespace tree that Operit's own runtime provides.
+     *
+     * The ported compat layer only installs the flat `NativeInterface` bridge,
+     * so without this every package dies with `'Tools' is not defined`. The
+     * proxy below turns `Tools.System.terminal.exec(a, b, c)` into
+     * `NativeInterface.__call("Tools.System.terminal.exec", "[a,b,c]")` — the
+     * exact shape [OperitHostDispatcher] already handles.
+     *
+     * `scripts/mock_tools_proxy_test.js` extracts this very string and runs it
+     * against the real super_admin.js, so the text below is the tested one.
+     */
+    private fun installHostBootstrap(
+        rt: QuickJsNativeRuntime,
+        cfg: KelivoWorkspaceHost.WorkspaceConfig,
+    ) {
+        val cleanOnExit = File(cfg.tmpDir, "operit-cleanOnExit")
+        runCatching { cleanOnExit.mkdirs() }
+        val script = HOST_BOOTSTRAP.replace(
+            "'__KELIVO_CLEAN_ON_EXIT_DIR__'",
+            JSONObject.quote(cleanOnExit.absolutePath),
+        )
+        runCatching { rt.eval(script, "operit-bootstrap.js") }
+            .onSuccess { diag("bootstrap installed") }
+            .onFailure { diag("bootstrap failed: ${it.message}") }
+    }
+
+    private val HOST_BOOTSTRAP = """
+        (function () {
+            var root = globalThis;
+
+            function parseHostResult(text) {
+                if (text === null || text === undefined) return null;
+                if (typeof text !== 'string') return text;
+                var trimmed = text.trim();
+                if (trimmed.length === 0) return null;
+                var first = trimmed.charAt(0);
+                if (first === '{' || first === '[') {
+                    try {
+                        return JSON.parse(trimmed);
+                    } catch (error) {
+                        return text;
+                    }
+                }
+                return text;
+            }
+
+            function invokeHost(path, args) {
+                var bridge = root.NativeInterface;
+                if (!bridge || typeof bridge.__call !== 'function') {
+                    return Promise.reject(new Error('NativeInterface.__call is unavailable: ' + path));
+                }
+                return Promise.resolve(bridge.__call(path, JSON.stringify(args))).then(parseHostResult);
+            }
+
+            function makeNamespace(path) {
+                function leaf() {
+                    return invokeHost(path, Array.prototype.slice.call(arguments));
+                }
+                return new Proxy(leaf, {
+                    get: function (target, property) {
+                        // Never look like a thenable, so `await Tools.System`
+                        // cannot accidentally resolve the namespace itself.
+                        if (property === 'then') return undefined;
+                        if (typeof property === 'symbol') return target[property];
+                        if (property === 'name' || property === 'length') return target[property];
+                        if (property === 'call' || property === 'apply' || property === 'bind') {
+                            return target[property];
+                        }
+                        return makeNamespace(path + '.' + String(property));
+                    },
+                    apply: function (target, thisArg, args) {
+                        return invokeHost(path, args);
+                    },
+                });
+            }
+
+            if (typeof root.Tools === 'undefined') {
+                root.Tools = makeNamespace('Tools');
+            }
+
+            if (typeof root.getChatId !== 'function') {
+                // One stable id for every conversation: the merged build wants
+                // a single shared container session set, not per-chat ones.
+                root.getChatId = function () {
+                    return 'kelivo-shared';
+                };
+            }
+
+            if (typeof root.OPERIT_CLEAN_ON_EXIT_DIR === 'undefined') {
+                root.OPERIT_CLEAN_ON_EXIT_DIR = '__KELIVO_CLEAN_ON_EXIT_DIR__';
+            }
+        })();
+    """.trimIndent()
 
     private fun failure(t: Throwable): String =
         JSONObject().put("error", t.javaClass.simpleName).put("message", t.message ?: "").toString()
