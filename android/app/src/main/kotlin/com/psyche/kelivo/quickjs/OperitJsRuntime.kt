@@ -1,6 +1,7 @@
 package com.psyche.kelivo.quickjs
 
 import android.content.Context
+import android.util.Log
 import com.psyche.kelivo.workspace.KelivoWorkspaceHost
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
@@ -86,6 +87,11 @@ class OperitJsRuntime(
         rt.installCompatLayerOrThrow()
         config = cfg
         runtime = rt
+        Log.i(
+            TAG,
+            "configure: usable=${cfg.isUsable} rootfs=${cfg.rootfsDir} " +
+                "tmp=${cfg.tmpDir} nativeLib=${cfg.nativeLibDir}",
+        )
         return JSONObject().put("ok", true).put("usable", cfg.isUsable).toString()
     }
 
@@ -204,18 +210,46 @@ class OperitJsRuntime(
     private fun err(message: String): String =
         JSONObject().put("error", "OperitJsError").put("message", message).toString()
 
-    private fun packageNames(): List<String> =
-        runCatching { context.assets.list("flutter_assets/$ASSET_DIR")?.toList().orEmpty() }
-            .getOrDefault(emptyList())
-            .filter { it.endsWith(".js") }
-            .map { it.removeSuffix(".js") }
-            .sorted()
+    /**
+     * Asset roots to try, in order.
+     *
+     * `pubspec.yaml` declares `assets/operit_packages/`, and Flutter keeps the
+     * declared path verbatim under `flutter_assets/` — so the packaged path
+     * carries an extra `assets/` component. The bare form is kept as a fallback
+     * so this keeps working if that pubspec entry is ever moved or flattened.
+     */
+    private val assetRoots = listOf(
+        "flutter_assets/assets/$ASSET_DIR",
+        "flutter_assets/$ASSET_DIR",
+    )
 
-    private fun readPackageSource(name: String): String? =
-        runCatching {
-            context.assets.open("flutter_assets/$ASSET_DIR/$name.js")
-                .bufferedReader().use { it.readText() }
-        }.getOrNull()
+    private fun packageNames(): List<String> {
+        for (root in assetRoots) {
+            val names = runCatching { context.assets.list(root)?.toList().orEmpty() }
+                .getOrElse { emptyList<String>() }
+                .filter { it.endsWith(".js") }
+                .map { it.removeSuffix(".js") }
+                .sorted()
+            if (names.isNotEmpty()) {
+                Log.i(TAG, "loaded ${names.size} JS packages from $root")
+                return names
+            }
+        }
+        Log.w(TAG, "no JS packages found; tried ${assetRoots.joinToString()}")
+        return emptyList()
+    }
+
+    private fun readPackageSource(name: String): String? {
+        for (root in assetRoots) {
+            val source = runCatching {
+                context.assets.open("$root/$name.js")
+                    .bufferedReader().use { it.readText() }
+            }.getOrNull()
+            if (source != null) return source
+        }
+        Log.w(TAG, "package source not found: $name.js")
+        return null
+    }
 
     // Extracts the JSON object from the leading METADATA block (see parseMetadata).
     private fun parseMetadata(source: String): JSONObject? {
@@ -254,6 +288,7 @@ class OperitJsRuntime(
     }
 
     private companion object {
+        const val TAG = "OperitJs"
         const val CHANNEL_NAME = "app.operit_js"
         const val ASSET_DIR = "operit_packages"
         const val MAX_DRAIN_ROUNDS = 64

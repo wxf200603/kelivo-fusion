@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
@@ -154,6 +155,7 @@ class OperitJsToolsService {
     _definitions = const <Map<String, dynamic>>[];
     _routes.clear();
     _lastError = message;
+    debugPrint('[operit_js] bridge unavailable: $message');
   }
 
   /// Replaces the cached schemas and routes atomically, so a partial parse
@@ -172,6 +174,14 @@ class OperitJsToolsService {
         ? null
         : 'no tools found for ${enabledPackages.join(', ')} '
               'in assets/operit_packages';
+    if (_ready) {
+      debugPrint(
+        '[operit_js] ${definitions.length} tools registered: '
+        '${routes.keys.join(', ')}',
+      );
+    } else {
+      debugPrint('[operit_js] $_lastError');
+    }
     return _ready;
   }
 
