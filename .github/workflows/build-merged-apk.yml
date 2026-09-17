@@ -1,0 +1,108 @@
+name: Build Merged APK
+
+# Produces installable release APKs for the Operit x Kelivo merged app.
+#
+# Why CI: the development container is aarch64 and Android ships no
+# aarch64-Linux build-tools/aapt2, so APKs cannot be built locally.
+#
+# Network is required during the build:
+#   - tool/fetch_proot.sh downloads prebuilt proot libs into app/src/main/jniLibs
+#   - the :operit_quickjs CMake script fetches QuickJS sources from GitHub
+
+on:
+  workflow_dispatch:
+    inputs:
+      abi:
+        description: 'Target ABI'
+        required: false
+        default: 'all'
+        type: choice
+        options: [all, arm64, armeabi-v7a, x86_64]
+  push:
+    branches: [main, master]
+
+env:
+  FLUTTER_VERSION: '3.44.9'
+
+jobs:
+  android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: 🐦 Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: 📝 Inject secrets fallback
+        run: |
+          mkdir -p lib/secrets
+          if [ ! -f lib/secrets/fallback.dart ]; then
+            cat > lib/secrets/fallback.dart <<'EOF'
+          const String siliconflowFallbackKey = '';
+          EOF
+          fi
+
+      - name: 📦 flutter pub get
+        run: flutter pub get
+
+      - name: 🔑 Configure signing
+        run: |
+          if [ -n "${{ secrets.SIGN_KEYSTORE_BASE64 }}" ]; then
+            echo "🔐 Using provided keystore"
+            echo "${{ secrets.SIGN_KEYSTORE_BASE64 }}" | base64 --decode > android/app/key.jks
+            {
+              echo "storeFile=key.jks"
+              echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}"
+              echo "keyAlias=${{ secrets.KEY_ALIAS }}"
+              echo "keyPassword=${{ secrets.KEY_PASSWORD }}"
+            } > android/key.properties
+          else
+            echo "🔧 Generating ephemeral keystore (installable, not for distribution)"
+            keytool -genkeypair -v \
+              -keystore android/app/key.jks \
+              -storetype JKS \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -alias merged -storepass android -keypass android \
+              -dname "CN=Merged Operit Kelivo,O=Dev,C=CN"
+            {
+              echo "storeFile=key.jks"
+              echo "storePassword=android"
+              echo "keyAlias=merged"
+              echo "keyPassword=android"
+            } > android/key.properties
+          fi
+
+      - name: 🏗️ Build APK
+        run: |
+          case "${{ github.event.inputs.abi }}" in
+            arm64)       TARGET="--target-platform android-arm64" ;;
+            armeabi-v7a) TARGET="--target-platform android-arm" ;;
+            x86_64)      TARGET="--target-platform android-x64" ;;
+            *)           TARGET="--split-per-abi" ;;
+          esac
+          echo "flutter build apk --release $TARGET"
+          flutter build apk --release $TARGET
+
+      - name: 📤 Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-apk
+          path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
