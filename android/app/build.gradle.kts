@@ -72,6 +72,13 @@ android {
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            // The ported QuickJS bridge resolves some members by name through
+            // JNI, so R8 must not rename them. Declared explicitly to be sure
+            // proguard-rules.pro is actually read by the release build.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
