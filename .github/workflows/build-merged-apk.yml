@@ -15,7 +15,7 @@ on:
       abi:
         description: 'Target ABI'
         required: false
-        default: 'all'
+        default: 'arm64'
         type: choice
         options: [all, arm64, armeabi-v7a, x86_64]
   push:
@@ -35,6 +35,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: false
+          large-packages: true
+          swap-storage: true
 
       - name: ☕ Setup Java
         uses: actions/setup-java@v4
@@ -95,7 +103,7 @@ jobs:
             arm64)       TARGET="--target-platform android-arm64" ;;
             armeabi-v7a) TARGET="--target-platform android-arm" ;;
             x86_64)      TARGET="--target-platform android-x64" ;;
-            *)           TARGET="--split-per-abi" ;;
+            *)           TARGET="--target-platform android-arm64" ;;
           esac
           echo "flutter build apk --release $TARGET"
           flutter build apk --release $TARGET
