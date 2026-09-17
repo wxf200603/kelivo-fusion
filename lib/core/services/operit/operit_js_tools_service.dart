@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
-import '../../utils/app_directories.dart';
+import '../../../utils/app_directories.dart';
 import '../../../features/home/services/tool_approval_service.dart';
 
 /// Bridges Operit's JS tool packages — running on the ported QuickJS engine —
