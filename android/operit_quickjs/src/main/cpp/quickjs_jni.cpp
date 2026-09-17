@@ -830,7 +830,7 @@ QuickJsVm* FromHandle(jlong handle) {
 }  // namespace
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeCreate(
+Java_com_psyche_kelivo_quickjs_QuickJsNativeBridge_nativeCreate(
     JNIEnv* env,
     jclass,
     jobject host_bridge
@@ -853,7 +853,7 @@ Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeCr
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeDestroy(
+Java_com_psyche_kelivo_quickjs_QuickJsNativeBridge_nativeDestroy(
     JNIEnv*,
     jclass,
     jlong handle
@@ -862,7 +862,7 @@ Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeDe
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeEvaluate(
+Java_com_psyche_kelivo_quickjs_QuickJsNativeBridge_nativeEvaluate(
     JNIEnv* env,
     jclass,
     jlong handle,
@@ -895,7 +895,7 @@ Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeEv
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeCallFunction(
+Java_com_psyche_kelivo_quickjs_QuickJsNativeBridge_nativeCallFunction(
     JNIEnv* env,
     jclass,
     jlong handle,
@@ -934,7 +934,7 @@ Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeCa
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeExecutePendingJobs(
+Java_com_psyche_kelivo_quickjs_QuickJsNativeBridge_nativeExecutePendingJobs(
     JNIEnv*,
     jclass,
     jlong handle,
@@ -948,7 +948,7 @@ Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeEx
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeGetMemoryUsage(
+Java_com_psyche_kelivo_quickjs_QuickJsNativeBridge_nativeGetMemoryUsage(
     JNIEnv* env,
     jclass,
     jlong handle
@@ -959,7 +959,7 @@ Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeGe
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeResetMemoryPeak(
+Java_com_psyche_kelivo_quickjs_QuickJsNativeBridge_nativeResetMemoryPeak(
     JNIEnv*,
     jclass,
     jlong handle
@@ -971,7 +971,7 @@ Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeRe
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_ai_assistance_operit_core_tools_javascript_QuickJsNativeBridge_nativeInterrupt(
+Java_com_psyche_kelivo_quickjs_QuickJsNativeBridge_nativeInterrupt(
     JNIEnv*,
     jclass,
     jlong handle
