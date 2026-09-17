@@ -176,7 +176,7 @@ class OperitJsRuntime(
                 .bufferedReader().use { it.readText() }
         }.getOrNull()
 
-    /** Extracts the JSON object from the leading `/* METADATA {...} *​/` block. */
+    // Extracts the JSON object from the leading METADATA block (see parseMetadata).
     private fun parseMetadata(source: String): JSONObject? {
         val marker = source.indexOf("METADATA")
         if (marker < 0) return null
