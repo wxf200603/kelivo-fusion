@@ -31,7 +31,9 @@ class OperitJsRuntime(
     private val loaded = mutableSetOf<String>()
 
     fun attach() {
+        diag("attach()")
         channel.setMethodCallHandler { call, result ->
+            diag("call ${call.method}")
             when (call.method) {
                 "configure" -> {
                     val args = call.arguments as? Map<*, *> ?: emptyMap<Any, Any>()
@@ -53,6 +55,11 @@ class OperitJsRuntime(
                             }.getOrElse(::failure)
                         )
                     }
+                }
+                "diag" -> {
+                    val args = call.arguments as? Map<*, *> ?: emptyMap<Any, Any>()
+                    diag("dart: ${args["msg"]}")
+                    result.success(null)
                 }
                 "status" -> result.success(
                     JSONObject()
@@ -87,6 +94,7 @@ class OperitJsRuntime(
         rt.installCompatLayerOrThrow()
         config = cfg
         runtime = rt
+        diag("configure: usable=${cfg.isUsable} rootfs=${cfg.rootfsDir}")
         Log.i(
             TAG,
             "configure: usable=${cfg.isUsable} rootfs=${cfg.rootfsDir} " +
@@ -104,7 +112,9 @@ class OperitJsRuntime(
      */
     private fun listTools(): String {
         val out = JSONArray()
-        for (name in packageNames()) {
+        val names = packageNames()
+        diag("listTools: ${names.size} packages")
+        for (name in names) {
             val meta = readPackageSource(name)?.let(::parseMetadata) ?: continue
             val tools = JSONArray()
             meta.optJSONArray("tools")?.let { arr ->
@@ -117,6 +127,7 @@ class OperitJsRuntime(
             }
             out.put(JSONObject().put("package", name).put("tools", tools))
         }
+        diag("listTools: ${out.length()} entries")
         return out.toString()
     }
 
@@ -158,6 +169,7 @@ class OperitJsRuntime(
 
 
     private fun callTool(pkg: String, tool: String, argsJson: String): String {
+        diag("callTool $pkg:$tool")
         val rt = runtime ?: return err("runtime not configured")
         if (pkg.isBlank() || tool.isBlank()) return err("pkg and tool are required")
 
@@ -202,6 +214,18 @@ class OperitJsRuntime(
         val errValue = rt.eval("globalThis.__operit_err", "read-err.js").valueJson
         if (errValue != null && errValue != "null") return err(errValue.trim('"'))
         return rt.eval("globalThis.__operit_out", "read-out.js").valueJson ?: "null"
+    }
+
+    /**
+     * Appends one line to `<files>/operit_js_diag.log`.
+     *
+     * Release builds send nothing useful to logcat — Dart's `print` is not
+     * redirected there, and the shared log buffer is monopolised by the host
+     * app — so this file is the only reliable way to see how far the bridge
+     * actually gets on a real device.
+     */
+    private fun diag(message: String) {
+        runCatching { File(context.filesDir, DIAG_FILE).appendText("$message\n") }
     }
 
     private fun failure(t: Throwable): String =
@@ -291,6 +315,7 @@ class OperitJsRuntime(
         const val TAG = "OperitJs"
         const val CHANNEL_NAME = "app.operit_js"
         const val ASSET_DIR = "operit_packages"
+        const val DIAG_FILE = "operit_js_diag.log"
         const val MAX_DRAIN_ROUNDS = 64
     }
 }

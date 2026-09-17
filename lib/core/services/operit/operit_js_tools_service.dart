@@ -77,13 +77,16 @@ class OperitJsToolsService {
     if (_warming) return false;
     _warming = true;
     try {
+      await _mark('warmUp:enter');
       final envDir = await AppDirectories.getEnvironmentDirectory();
+      await _mark('env=${envDir.path}');
       final configured = await _channel.invokeMethod<String>('configure', {
         'rootfsDir': p.join(envDir.path, 'rootfs'),
         'tmpDir': p.join(envDir.path, 'tmp'),
         'cwd': '/root',
       });
 
+      await _mark('configured=$configured');
       final status = _decodeMap(configured);
       if (status['usable'] != true) {
         _fail('workspace not usable (rootfs missing or proot libs absent)');
@@ -91,8 +94,10 @@ class OperitJsToolsService {
       }
 
       final raw = await _channel.invokeMethod<String>('listTools');
+      await _mark('listTools=${raw?.length ?? 0} chars');
       return _install(raw);
     } catch (error) {
+      await _mark('error=$error');
       _fail('$error');
       return false;
     } finally {
@@ -149,6 +154,18 @@ class OperitJsToolsService {
   }
 
   // --------------------------------------------------------------- internals
+
+  /// Mirrors progress into the native diagnostic log (`operit_js_diag.log`
+  /// in the app's private files dir).
+  ///
+  /// Release builds give us no logcat output at all — Dart's `print` is not
+  /// redirected there — so this is the only way to see how far [warmUp] gets
+  /// on a real device. Never throws.
+  Future<void> _mark(String message) async {
+    try {
+      await _channel.invokeMethod<void>('diag', {'msg': message});
+    } catch (_) {}
+  }
 
   void _fail(String message) {
     _ready = false;
