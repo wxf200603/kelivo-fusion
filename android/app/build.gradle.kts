@@ -18,7 +18,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.psyche.kelivo"
+        applicationId = "com.psyche.kelivo.fusion"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -124,6 +124,9 @@ tasks.findByName("preBuild")?.dependsOn("fetchProot")
 dependencies {
     // Operit QuickJS engine, ported (see third_party/operit/LICENSE)
     implementation(project(":operit_quickjs"))
+    // Shizuku: system command channel (MIT licensed)
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("androidx.browser:browser:1.9.0")
     implementation("org.tukaani:xz:1.10")
     // Required for core library desugaring (used by flutter_local_notifications)

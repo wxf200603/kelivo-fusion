@@ -16,6 +16,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.FlutterSurfaceView
 import io.flutter.embedding.engine.FlutterEngine
 import com.psyche.kelivo.workspace.WorkspacePlugin
+import com.psyche.kelivo.quickjs.OperitJsRuntime
 import io.flutter.plugin.common.MethodChannel
 import com.dexterous.flutterlocalnotifications.FlutterLocalNotificationsPlugin
 import java.io.File
@@ -66,6 +67,7 @@ class MainActivity : FlutterActivity() {
     private val fileSaveChannelName = "app.file_save"
     private val deviceStorageChannelName = "app.device_storage"
     private val displayModeChannelName = "app.display_mode"
+    private var operitJsRuntime: OperitJsRuntime? = null
     private var processTextChannel: MethodChannel? = null
     private var fileSaveChannel: MethodChannel? = null
     private var deviceStorageChannel: MethodChannel? = null
@@ -130,6 +132,9 @@ class MainActivity : FlutterActivity() {
          kelivo.backgroundRuntime.attachActivity(this)
          deviceLocalToolsHandler = kelivo.deviceTools.also { it.attachActivity(this) }
          workspacePlugin = kelivo.workspace.also { it.attachActivity(this) }
+        // Operit JS tool packages on the ported QuickJS engine (see docs/merge/)
+        operitJsRuntime = OperitJsRuntime(this, flutterEngine.dartExecutor.binaryMessenger)
+            .also { it.attach() }
         processTextChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, processTextChannelName)
         processTextChannel?.setMethodCallHandler { call, result ->
             when (call.method) {

@@ -37,6 +37,11 @@
          family (db without -wal, receipt without db), which the fail-closed
          startup gate rejects. Kelivo ships its own backup (WebDAV/S3/local
          export), so system backup is disabled. -->
+    <!-- Device automation (ported from Operit): enumerate / launch apps by name -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
     <application
         android:label="Kelivo"
         android:name=".KelivoApplication"
@@ -142,6 +147,17 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- System command channel: Shizuku ContentProvider.
+             Without this registration Shizuku.pingBinder() is always false and
+             the manager shows as "not installed" regardless of user setup. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -164,5 +180,8 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- Shizuku: allow detecting the manager app (Android 11+ visibility) -->
+        <package android:name="moe.shizuku.manager" />
+        <package android:name="rikka.shizuku.provider" />
     </queries>
 </manifest>
