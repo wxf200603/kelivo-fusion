@@ -251,9 +251,19 @@ class OperitJsRuntime(
             "'__KELIVO_CLEAN_ON_EXIT_DIR__'",
             JSONObject.quote(cleanOnExit.absolutePath),
         )
-        runCatching { rt.eval(script, "operit-bootstrap.js") }
-            .onSuccess { diag("bootstrap installed") }
-            .onFailure { diag("bootstrap failed: ${it.message}") }
+        // `eval` reports JS errors inside [QuickJsNativeRuntime.EvalResult] rather
+        // than throwing, so a plain onSuccess would log "installed" even when the
+        // bootstrap script blew up.
+        val result = runCatching { rt.eval(script, "operit-bootstrap.js") }
+            .getOrElse {
+                diag("bootstrap threw: ${it.message}")
+                return
+            }
+        if (result.success) {
+            diag("bootstrap installed: Tools=${result.valueJson}")
+        } else {
+            diag("bootstrap failed: ${result.errorMessage} ${result.errorStack}")
+        }
     }
 
     private val HOST_BOOTSTRAP = """
