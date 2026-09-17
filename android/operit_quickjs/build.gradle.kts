@@ -18,7 +18,7 @@ android {
     ndkVersion = "28.2.13676358"
 
     defaultConfig {
-        minSdk = 26
+        minSdk = 24 // aligned with the Kelivo app (flutter.minSdkVersion)
         externalNativeBuild {
             cmake {
                 cppFlags("-std=c++17")
