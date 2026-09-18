@@ -244,7 +244,9 @@ class KelivoWorkspaceHost(
 
         val script = buildString {
             append("cd ").append(singleQuote(cwd)).append(" 2>/dev/null; ")
-            append("{ ").append(command).append(" ; }2>&1; ")
+            // `}` must be its own word: `}2>&1` parses as the literal word `}2`, which
+            // leaves the brace group unclosed ("unexpected end of file").
+            append("{ ").append(command).append(" ; } 2>&1; ")
             append("__kelivo_status=$?; echo ").append(marker).append(":\$__kelivo_status; ")
             append("echo ").append(pwdMarker).append(":$(pwd)")
         }
