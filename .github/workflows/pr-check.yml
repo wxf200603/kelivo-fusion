@@ -34,7 +34,6 @@ jobs:
         run: flutter pub get
 
       - name: Dart format (changed files only)
-        id: dart-format
         shell: bash
         run: |
           set -euo pipefail
@@ -46,7 +45,11 @@ jobs:
             HEAD_SHA="${{ github.sha }}"
           fi
 
-          files="$(git diff --diff-filter=ACMR --name-only "$BASE_SHA" "$HEAD_SHA" -- | grep -E '^(lib|test|integration_test)/.*\.dart$' || true)"
+          # Kept apart from the filter below on purpose: `|| true` on the filtered
+          # form turned a failed diff -- a base that a force-push left unreachable,
+          # for instance -- into "no changed Dart files", which is a silent pass.
+          changed="$(git diff --diff-filter=ACMR --name-only "$BASE_SHA" "$HEAD_SHA" --)"
+          files="$(printf '%s\n' "$changed" | grep -E '^(lib|test|integration_test)/.*\.dart$' || true)"
           if [ -z "$files" ]; then
             echo "No changed Dart files to format-check."
             exit 0
@@ -56,45 +59,59 @@ jobs:
           echo "$files"
           dart format --output=none --set-exit-if-changed $files
 
-      - name: Stage the files dart format wants to change
-        # Same hand-off as the l10n step below, for the same reason: this
-        # proot has no Flutter, so the formatter's output can only be
-        # produced on the runner. The staged copy keeps the repository's
-        # directories, so it can be copied straight back in.
-        if: failure() && steps.dart-format.outcome == 'failure'
+      - name: Stage the files the formatter would rewrite
+        # Not conditional on the check above failing. That check only looks at
+        # the files this push changed, so a file nobody has touched since the
+        # gate was added is never looked at -- which is how three files stayed
+        # unformatted through four pushes, and why this report covers the whole
+        # repository instead.
+        #
+        # A report, not a second assertion: nothing here fails the job, and on a
+        # clean tree the staged copy is dropped, so a green run hands over
+        # nothing that could be mistaken for something to commit.
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
-            HEAD_SHA="${{ github.sha }}"
-          else
-            BASE_SHA="${{ github.event.before }}"
-            HEAD_SHA="${{ github.sha }}"
-          fi
-          files="$(git diff --diff-filter=ACMR --name-only "$BASE_SHA" "$HEAD_SHA" -- | grep -E '^(lib|test|integration_test)/.*\.dart$' || true)"
-          if [ -z "$files" ]; then
-            echo 'Nothing to hand over.'
-            exit 0
-          fi
           staged=dart-format-recovery
           rm -rf "$staged"
-          for f in $files; do
+
+          dart_files="$(git ls-files -- lib test integration_test | grep -E '\.dart$' || true)"
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
             mkdir -p "$staged/$(dirname "$f")"
             cp "$f" "$staged/$f"
-          done
+          done <<< "$dart_files"
+
+          # --parents is not used above: the loop builds the repository's own
+          # directory layout, so the artifact can be copied straight back in.
           dart format "$staged"
 
-      - name: Upload the files dart format wants to change
-        # failure-only in effect: the format step's outcome is only
-        # 'failure' when the check above failed, and an always-on upload
-        # would leave a stale artifact behind.
-        if: failure() && steps.dart-format.outcome == 'failure'
+          kept=0
+          while IFS= read -r f; do
+            rel="${f#"$staged"/}"
+            if cmp -s "$f" "$rel"; then rm -f "$f"; else kept=$((kept + 1)); fi
+          done < <(find "$staged" -name '*.dart' -type f)
+
+          if [ "$kept" -eq 0 ]; then
+            rm -rf "$staged"
+            echo 'Every tracked Dart file is already formatted; nothing to hand over.'
+          else
+            echo "Handing over $kept file(s) the formatter would rewrite."
+          fi
+
+      - name: Upload the files the formatter would rewrite
+        # `always()` for the same reason the staging is: the formatter's output is
+        # the only thing here that cannot be produced off the runner. When the
+        # staging found nothing it removed the directory, so this stays quiet on
+        # a clean tree instead of leaving a stale artifact to be mistaken for
+        # current output.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dart-format-recovery
           path: dart-format-recovery
-
+          if-no-files-found: ignore
       - name: Generate l10n and ensure committed outputs
         run: |
           flutter gen-l10n
