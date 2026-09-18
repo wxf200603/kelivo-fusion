@@ -136,7 +136,18 @@ class OperitJsRuntime(
         val names = packageNames()
         diag("listTools: ${names.size} packages")
         for (name in names) {
-            val meta = readPackageSource(name)?.let(::parseMetadata) ?: continue
+            val source = readPackageSource(name)
+            if (source == null) {
+                diag("listTools: skip $name (asset unreadable)")
+                continue
+            }
+            val meta = parseMetadata(source)
+            if (meta == null) {
+                // Reported by name: `?: continue` hid six real packages
+                // behind a count that only ever looked plausible.
+                diag("listTools: skip $name (METADATA is not strict JSON)")
+                continue
+            }
             val tools = JSONArray()
             meta.optJSONArray("tools")?.let { arr ->
                 for (i in 0 until arr.length()) {
@@ -149,7 +160,17 @@ class OperitJsRuntime(
             out.put(JSONObject().put("package", name).put("tools", tools))
         }
         diag("listTools: ${out.length()} entries")
-        return out.toString()
+        val emitted = (0 until out.length())
+            .mapNotNull { out.optJSONObject(it)?.optString("package") }
+            .filter { it.isNotEmpty() }
+        diag("listTools: emitted=${emitted.joinToString(",")}")
+        val payload = out.toString()
+        // Written out as well as counted: the Dart loader is diffed against
+        // this exact payload, and a count cannot be diffed.
+        runCatching {
+            File(context.filesDir, "operit_js_listTools.json").writeText(payload)
+        }.onFailure { diag("listTools: dump failed: $it") }
+        return payload
     }
 
     private fun buildToolSchema(pkg: String, tool: String, entry: JSONObject): JSONObject {
