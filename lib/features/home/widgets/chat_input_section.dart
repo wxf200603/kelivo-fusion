@@ -151,9 +151,11 @@ class ChatInputSection extends StatelessWidget {
     final pk = chatModelProviderKey;
     final mid = chatModelId;
 
-    // Enforce model capabilities: disable MCP selection if model doesn't
-    // support tools. Skipped while the conversation overrides the model —
-    // these writes land on the assistant and would leak across conversations.
+    // Enforce the capabilities the model can honour: a reasoning budget on a
+    // model without reasoning. Skipped while the conversation overrides the
+    // model — this write lands on the assistant and would leak across
+    // conversations. The MCP servers used to be cleared here as well; they are
+    // not any more (see _enforceModelCapabilities).
     if (!chatModelIsConversationOverride) {
       _enforceModelCapabilities(context, settings, ap, a, pk, mid);
     }

@@ -15,10 +15,16 @@ import 'package:provider/provider.dart';
 
 import '../../../support/business_test_harness.dart';
 
-/// The composer force-disables capabilities the current model lacks by writing
-/// to the ASSISTANT. Once a conversation can pin its own model, that write
-/// would reach every other conversation sharing the assistant, so it has to be
-/// scoped to the case where the assistant really is the source of the model.
+/// The composer makes exactly one write to the ASSISTANT: turning off a
+/// reasoning budget the current model cannot honour. That write stays scoped to
+/// the case where the assistant really is the source of the model, because a
+/// conversation that pins its own model would otherwise reach every other
+/// conversation sharing the assistant.
+///
+/// It no longer touches the assistant's MCP servers. Switching to a model the
+/// registry does not mark as tool-capable used to delete them as a side effect
+/// (0a6309c, "fix(tools): switching models no longer deletes your MCP servers").
+/// They now stay configured and go unused until a tool-capable model is selected.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -119,7 +125,7 @@ void main() {
     );
   });
 
-  testWidgets('the assistant\'s own model still disables what it cannot do', (
+  testWidgets('a model that cannot call tools keeps the MCP servers configured', (
     tester,
   ) async {
     final assistants = await loadAssistantWithMcp(tester);
@@ -130,6 +136,13 @@ void main() {
       isConversationOverride: false,
     );
 
-    expect(assistants.currentAssistant?.mcpServerIds, isEmpty);
+    expect(
+      assistants.currentAssistant?.mcpServerIds,
+      const ['server-1'],
+      reason:
+          'not marking a model tool-capable is not a reason to delete a '
+          'configuration nobody asked to change; the servers stay configured '
+          'and go unused until a tool-capable model is selected',
+    );
   });
 }
