@@ -170,8 +170,22 @@ class OperitJsRuntime(
     }
 
 
+    /**
+     * Logging wrapper around [executeTool].
+     *
+     * The diagnostic log records both the arguments and the outcome of every
+     * call, which is what makes an on-device test report verifiable: a call the
+     * model claims to have made shows up here with the bytes it actually got
+     * back, so a hallucinated result is immediately visible.
+     */
     private fun callTool(pkg: String, tool: String, argsJson: String): String {
-        diag("callTool $pkg:$tool")
+        diag("callTool $pkg:$tool args=${argsJson.take(300)}")
+        val out = executeTool(pkg, tool, argsJson)
+        diag("result $pkg:$tool -> ${out.take(400)}")
+        return out
+    }
+
+    private fun executeTool(pkg: String, tool: String, argsJson: String): String {
         val rt = runtime ?: return err("runtime not configured")
         if (pkg.isBlank() || tool.isBlank()) return err("pkg and tool are required")
 
@@ -246,17 +260,21 @@ class OperitJsRuntime(
     private fun maybeRunSelfTest() {
         val marker = File(context.filesDir, SELFTEST_MARKER)
         if (!marker.isFile) return
-        val command = runCatching { marker.readText().trim() }
-            .getOrNull()
-            .orEmpty()
+        val text = runCatching { marker.readText().trim() }.getOrNull().orEmpty()
+        // A leading `#shell` selects the Android-side tool (root/Shizuku); anything
+        // else runs inside the container as a normal terminal command.
+        val useShell = text.startsWith(SHELL_PREFIX)
+        val command = (if (useShell) text.removePrefix(SHELL_PREFIX) else text)
+            .trim()
             .ifBlank { "echo operit-selftest" }
+        val tool = if (useShell) "shell" else "terminal"
         marker.delete()
 
         val startedAt = System.currentTimeMillis()
-        val raw = runCatching {
-            callTool("super_admin", "terminal", JSONObject().put("command", command).toString())
-        }.getOrElse { "threw: ${it.message}" }
-        diag("selftest [$command] -> ${raw.take(800)} (${System.currentTimeMillis() - startedAt}ms)")
+        runCatching {
+            callTool("super_admin", tool, JSONObject().put("command", command).toString())
+        }.onFailure { diag("selftest $tool threw: ${it.message}") }
+        diag("selftest $tool [$command] finished in ${System.currentTimeMillis() - startedAt}ms")
     }
 
     /**
@@ -454,10 +472,15 @@ class OperitJsRuntime(
         const val DIAG_FILE = "operit_js_diag.log"
 
         /**
-         * Presence of this file (its contents are the command line) triggers the
-         * one-shot end-to-end self test in [maybeRunSelfTest].
+         * Presence of this file triggers the one-shot end-to-end self test in
+         * [maybeRunSelfTest]. Its contents are the command line to run; prefix
+         * them with `#shell` to test the Android-side tool instead of the
+         * container.
          */
         const val SELFTEST_MARKER = "operit_selftest.txt"
+
+        /** Marker prefix that switches [maybeRunSelfTest] to `super_admin:shell`. */
+        const val SHELL_PREFIX = "#shell"
         const val MAX_DRAIN_ROUNDS = 64
     }
 }
