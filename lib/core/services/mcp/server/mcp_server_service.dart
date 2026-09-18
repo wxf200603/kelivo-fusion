@@ -125,6 +125,10 @@ class McpServerService extends ChangeNotifier {
       if (!hadToken) {
         _token = _generateToken();
         await prefs.setString(_tokenKey, _token);
+        // Logged beside the write rather than trusted instead of it: a
+        // `setString` that returns has already been seen to store nothing
+        // here, so the line that settles it is `stored=true` next launch.
+        unawaited(_mark('mcp: wrote token len=${_token.length}chars'));
       }
       _loaded = true;
       // Reported through the channel rather than trusting the write: on device
@@ -159,6 +163,9 @@ class McpServerService extends ChangeNotifier {
       _token = _generateToken();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_tokenKey, _token);
+      unawaited(
+        _mark('mcp: wrote token before start len=${_token.length}chars'),
+      );
       notifyListeners();
     }
 
@@ -211,6 +218,7 @@ class McpServerService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_enabledKey, value);
+      unawaited(_mark('mcp: wrote enabled=$value'));
     } catch (error) {
       // The switch still applies to this run; only its persistence failed, and
       // that is exactly the kind of half-truth worth naming in the log.
@@ -234,6 +242,7 @@ class McpServerService extends ChangeNotifier {
     _allowLan = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_lanKey, value);
+    unawaited(_mark('mcp: wrote allow_lan=$value'));
     notifyListeners();
     if (_running) {
       await stop();
@@ -251,6 +260,7 @@ class McpServerService extends ChangeNotifier {
     _port = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_portKey, value);
+    unawaited(_mark('mcp: wrote port=$value'));
     notifyListeners();
     if (_running) {
       await stop();
@@ -266,6 +276,9 @@ class McpServerService extends ChangeNotifier {
     _token = _generateToken();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, _token);
+    unawaited(
+      _mark('mcp: wrote regenerated token len=${_token.length}chars'),
+    );
     notifyListeners();
     if (_running) {
       await stop();
