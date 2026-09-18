@@ -371,21 +371,19 @@ class KelivoWorkspaceHost(
         while (true) {
             val seen = buffer.from(startOffset)
             val finished = parseMarker(seen, marker)
-            if (finished != null) {
+            if (finished != null || System.currentTimeMillis() >= deadline) {
+                // After a timeout the shell keeps running; the leftover output
+                // lands in the next call's start offset, so a later read is not
+                // corrupted by it.
+                val body = stripEcho(finished?.body ?: seen, payload)
+                // Record it here too: the interactive path used to be the one
+                // route that left the screen record stale.
+                sessionOutput[sessionId] = body
                 return JSONObject()
-                    .put("output", stripEcho(finished.body, payload))
-                    .put("exitCode", finished.exitCode)
+                    .put("output", body)
+                    .put("exitCode", finished?.exitCode ?: -1)
                     .put("sessionId", sessionId)
-                    .put("timedOut", false)
-            }
-            if (System.currentTimeMillis() >= deadline) {
-                // The shell keeps running; the leftover output lands in the next
-                // call's start offset, so a later read is not corrupted by it.
-                return JSONObject()
-                    .put("output", stripEcho(seen, payload))
-                    .put("exitCode", -1)
-                    .put("sessionId", sessionId)
-                    .put("timedOut", true)
+                    .put("timedOut", finished == null)
             }
             Thread.sleep(POLL_MS)
         }
@@ -630,8 +628,11 @@ class KelivoWorkspaceHost(
             }
         }
 
-        // Gate the interactive exec path on evidence, never on hope.
-        if (plainRan) ptyUsable = true
+        // Gate the interactive exec path on evidence, never on hope. The proof
+        // has to cover the payload exec actually submits, and the probe's report
+        // round trip *is* [runPtyCommand] - so take that verdict. A plain echo
+        // only shows that the shell reads stdin.
+        if (reportRan) ptyUsable = true
 
         diag(
             "pty probe ${session.id} plainRan=$plainRan reportRan=$reportRan exit=$reportExit " +
@@ -645,12 +646,16 @@ class KelivoWorkspaceHost(
      * Runs [command] in a throwaway PTY session and returns the model-facing
      * result.
      *
-     * Why not the retained session: it never consumes stdin (io counters
-     * frozen, no reaction to six signals, a command written through the app's
-     * own master fd ignored) even though it happily writes a prompt. Fresh
-     * sessions, by contrast, executed every probe the candidate sweep gave
-     * them. One session per command also matches how the launcher path already
-     * works, so nothing depends on a long-lived shell staying healthy.
+     * The retained session is the preferred route now ([runPtyCommand], gated
+     * on [ptyUsable]); this remains the next attempt when it does not answer,
+     * so the interactive route still gets its chance before the launcher does.
+     * One session per command also matches how the launcher path already works,
+     * so nothing depends on a long-lived shell staying healthy.
+     *
+     * The "a retained session never consumes stdin" verdict that used to be
+     * written here is retired: on the very same shell arguments the probe
+     * reported `plainRan=true reportRan=true` with the exit status
+     * round-tripped. The tty was never dead - the payload was.
      *
      * The submission is the plain form: no brace group, no `}2>&1`, terminated
      * by a bare newline - exactly what the sweep proved runs.
@@ -763,9 +768,15 @@ class KelivoWorkspaceHost(
      *
      * Field names match what `super_admin.js` reads. A real screen model would
      * need a terminal emulator; the tail is what an agent actually needs.
+     *
+     * The session's own byte buffer *is* the screen: what an interactive
+     * program draws (a prompt, `nano`, `top`) never passes through a command's
+     * marker, so the last command result is only the fallback for sessions the
+     * launcher served.
      */
     override fun terminalScreen(sessionId: String): JSONObject {
-        val content = sessionOutput[sessionId].orEmpty()
+        val live = ptyBuffers[sessionId]?.all()
+        val content = if (live.isNullOrEmpty()) sessionOutput[sessionId].orEmpty() else live
         return JSONObject()
             .put("sessionId", sessionId)
             .put("rows", SCREEN_ROWS)

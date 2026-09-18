@@ -37,7 +37,7 @@ new1 = '''    /**
      * builds its payload here.
      */
     private fun ptySubmission(command: String, marker: String): String =
-        "$command2>&1; echo $marker:\\$?\\n"
+        "${command} 2>&1; echo $marker:\\$?\\n"
 
 '''
 
