@@ -147,6 +147,17 @@ class KelivoWorkspaceHost(
         return synchronized(execLock) {
             sessions[id]?.let { return@synchronized it }
             ptyBuffers[id] = PtyBuffer()
+
+            // `--noediting` is deliberate. With readline active the PTY kept
+            // swallowing written commands — they were echoed back but never
+            // executed — and every read carried bracketed-paste escapes.
+            // Canonical-mode input makes line submission deterministic while
+            // still being a persistent, interactive shell.
+            val bash = File(config.rootfsDir, "bin/bash")
+            val guestShellPath = if (bash.isFile) "/bin/bash" else null
+            val guestShellArgs =
+                if (bash.isFile) listOf("-l", "--noediting") else listOf("-l")
+
             val pid = try {
                 ptySessions.open(
                     sessionId = id,
@@ -161,6 +172,8 @@ class KelivoWorkspaceHost(
                     env = mapOf("PS1" to "", "PS2" to ""),
                     cols = SCREEN_COLS,
                     rows = SCREEN_ROWS,
+                    shell = guestShellPath,
+                    shellArgs = guestShellArgs,
                 )
             } catch (_: Exception) {
                 ptyBuffers.remove(id)
@@ -198,8 +211,9 @@ class KelivoWorkspaceHost(
         val marker = "__KELIVO_END_${markerSeq.incrementAndGet()}__"
 
         // `2>&1` folds stderr into the stream the model reads, and the trailing
-        // echo carries the exit status back out through the PTY.
-        val payload = "{ $trimmed ; }2>&1; echo $marker:\$?\n"
+        // echo carries the exit status back out through the PTY. The line ends
+        // with CR — the byte a real terminal sends for Enter.
+        val payload = "{ $trimmed ; }2>&1; echo $marker:\$?\r"
         if (!send(session, payload)) return unavailable(sessionId, "the PTY rejected the command")
 
         val deadline = System.currentTimeMillis() + timeout
@@ -263,7 +277,9 @@ class KelivoWorkspaceHost(
         val firstLine = payload.lineSequence().firstOrNull().orEmpty()
         if (firstLine.isEmpty()) return body.trimEnd()
         val at = body.indexOf(firstLine)
-        return if (at in 0..8) {
+        // Startup noise (terminal init, a prompt redraw) can precede the echo,
+        // so the match is allowed to sit a little way in — but no further.
+        return if (at in 0..ECHO_SEARCH_LIMIT) {
             body.substring(at + firstLine.length).trimStart('\r', '\n')
         } else {
             body.trimEnd()
@@ -498,5 +514,11 @@ class KelivoWorkspaceHost(
 
         /** A marker's status suffix: a plain integer, e.g. `0` or `-1`. */
         val STATUS_PATTERN = Regex("-?\\d+")
+
+        /**
+         * How far into a capture the echoed command may start and still be
+         * treated as the PTY echo (terminal init output can precede it).
+         */
+        const val ECHO_SEARCH_LIMIT = 256
     }
 }

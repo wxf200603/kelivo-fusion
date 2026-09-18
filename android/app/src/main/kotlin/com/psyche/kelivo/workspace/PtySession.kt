@@ -24,6 +24,8 @@ class PtySessions(
         rows: Int,
         prootArguments: List<String> = emptyList(),
         shell: String? = null,
+        /** Arguments for [shell]; defaults to a login shell. */
+        shellArgs: List<String> = listOf("-l"),
     ): Int {
         close(sessionId)
         tmpDir.mkdirs()
@@ -39,6 +41,7 @@ class PtySessions(
             env = env,
             extraArgs = prootArguments,
             shell = shell,
+            shellArgs = shellArgs,
         )
         val session = PtySession(sessionId, events)
         val pid = session.start(launch, rows = rows, cols = cols)

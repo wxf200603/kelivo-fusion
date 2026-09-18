@@ -41,6 +41,8 @@ object ProotCommand {
         env: Map<String, String>,
         extraArgs: List<String> = emptyList(),
         shell: String? = null,
+        /** Extra arguments for [shell]; `-l` keeps the historical login shell. */
+        shellArgs: List<String> = listOf("-l"),
         includeLibraryPath: Boolean = File(nativeLibDir, TALLOC_LIB).isFile,
     ): ProotLaunch {
         val guestCwd = validateGuestCwd(cwd)
@@ -84,7 +86,7 @@ object ProotCommand {
         }
 
         if (command == null) {
-            argv += listOf(guestShell, "-l")
+            argv += listOf(guestShell) + shellArgs
         } else {
             argv += listOf(guestShell, "-lc", BASH_EVAL, "kelivo", guestCwd, command)
         }
