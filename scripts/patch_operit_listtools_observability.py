@@ -121,7 +121,13 @@ check(
     "?.let(::parseMetadata) ?: continue" not in text,
     "the silent skip is still there",
 )
-for fragment in ("asset unreadable", "METADATA is not strict JSON", DUMP_NAME):
+# The skip message was reworded by the hjson commit: "not strict JSON" stopped
+# being a reason anything could be skipped for once HJSON parsed.
+for fragment in (
+    "asset unreadable",
+    "no METADATA block, or it will not parse as HJSON",
+    DUMP_NAME,
+):
     check(fragment in text, f"missing instrumentation: {fragment}")
 
 if failures:

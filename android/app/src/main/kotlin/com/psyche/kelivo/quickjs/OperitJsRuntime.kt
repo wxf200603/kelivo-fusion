@@ -5,6 +5,7 @@ import android.util.Log
 import com.psyche.kelivo.workspace.KelivoWorkspaceHost
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
+import org.hjson.JsonValue
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -145,7 +146,7 @@ class OperitJsRuntime(
             if (meta == null) {
                 // Reported by name: `?: continue` hid six real packages
                 // behind a count that only ever looked plausible.
-                diag("listTools: skip $name (METADATA is not strict JSON)")
+                diag("listTools: skip $name (no METADATA block, or it will not parse as HJSON)")
                 continue
             }
             val tools = JSONArray()
@@ -501,40 +502,16 @@ class OperitJsRuntime(
         return null
     }
 
-    // Extracts the JSON object from the leading METADATA block (see parseMetadata).
+    // Extracts the METADATA object at the top of a package. The block is HJSON, not
+    // JSON -- `name: code_runner` without quotes is valid there -- so it goes through
+    // org.hjson rather than org.json alone. Extraction and parse are the upstream's
+    // (PackageManager.kt:2467 and :2258); the return type is not, because callers
+    // here report "no block" separately from an empty one. See METADATA_PATTERN.
     private fun parseMetadata(source: String): JSONObject? {
-        val marker = source.indexOf("METADATA")
-        if (marker < 0) return null
-        val open = source.indexOf('{', marker)
-        if (open < 0) return null
-        var depth = 0
-        var i = open
-        while (i < source.length) {
-            when (source[i]) {
-                '"' -> i = skipString(source, i)
-                '{' -> depth++
-                '}' -> {
-                    depth--
-                    if (depth == 0) {
-                        return runCatching { JSONObject(source.substring(open, i + 1)) }.getOrNull()
-                    }
-                }
-            }
-            i++
-        }
-        return null
-    }
-
-    private fun skipString(s: String, start: Int): Int {
-        var i = start + 1
-        while (i < s.length) {
-            when (s[i]) {
-                '\\' -> i++
-                '"' -> return i
-            }
-            i++
-        }
-        return s.length - 1
+        val match = METADATA_PATTERN.find(source) ?: return null
+        val block = match.groupValues[1].trim()
+        if (block.isEmpty()) return null
+        return runCatching { JSONObject(JsonValue.readHjson(block).toString()) }.getOrNull()
     }
 
     private companion object {
@@ -542,6 +519,13 @@ class OperitJsRuntime(
         const val CHANNEL_NAME = "app.operit_js"
         const val ASSET_DIR = "operit_packages"
         const val DIAG_FILE = "operit_js_diag.log"
+
+        /**
+         * The upstream's METADATA expression, character for character:
+         * `PackageManager.kt:2467`. Raw string on purpose -- the backslashes are
+         * the regular expression's, not escapes.
+         */
+        val METADATA_PATTERN = """/\*\s*METADATA\s*([\s\S]*?)\*/""".toRegex()
 
         /**
          * Presence of this file triggers the one-shot end-to-end self test in
