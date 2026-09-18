@@ -8,6 +8,7 @@ import '../widgets/mcp_server_edit_sheet.dart';
 import '../widgets/mcp_json_edit_sheet.dart';
 import '../widgets/mcp_json_import.dart';
 import '../widgets/mcp_timeout_sheet.dart';
+import 'mcp_server_page.dart';
 import '../widgets/mcp_error_details_sheet.dart';
 import '../../../shared/widgets/form_sheet.dart';
 import '../../../l10n/app_localizations.dart';
@@ -75,6 +76,18 @@ class McpPage extends StatelessWidget {
         ),
         title: Text(l10n.mcpAssistantSheetTitle),
         actions: [
+          Tooltip(
+            message: l10n.mcpServerPageTitle,
+            child: _TactileIconButton(
+              icon: Lucide.SquareTerminal,
+              color: cs.onSurface,
+              size: 22,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const McpServerPage()),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
           Tooltip(
             message: l10n.mcpTimeoutSettingsTooltip,
             child: _TactileIconButton(
