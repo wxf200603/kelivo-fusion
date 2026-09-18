@@ -136,6 +136,9 @@ dependencies {
     implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("androidx.browser:browser:1.9.0")
     implementation("org.tukaani:xz:1.10")
+    // HJSON: ToolPkg METADATA is HJSON, not JSON, so org.json alone drops six
+    // real packages (MIT licensed; see third_party/hjson/LICENSE).
+    implementation("org.hjson:hjson:3.0.0")
     // Required for core library desugaring (used by flutter_local_notifications)
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     testImplementation("junit:junit:4.13.2")
