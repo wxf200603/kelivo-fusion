@@ -729,7 +729,7 @@ class KelivoWorkspaceHost(
      * builds its payload here.
      */
     private fun ptySubmission(command: String, marker: String): String =
-        "${command}2>&1; echo $marker:\$?\n"
+        "${command} 2>&1; echo $marker:\$?\n"
 
     private fun awaitMarker(buffer: PtyBuffer, start: Int, timeoutMs: Long): String {
         val deadline = System.currentTimeMillis() + timeoutMs
