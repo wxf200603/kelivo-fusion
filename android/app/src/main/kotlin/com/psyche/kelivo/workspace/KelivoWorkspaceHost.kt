@@ -115,6 +115,21 @@ class KelivoWorkspaceHost(
     /** Working directory per session, so `cd` survives between calls. */
     private val sessionCwd = ConcurrentHashMap<String, String>()
 
+    /**
+     * The one directory every session shares.
+     *
+     * [sessionCwd] stays as a per-session view for the log, but the shared
+     * workspace is what a new session opens in and what a `cd` updates, so a
+     * directory change is not trapped inside the shell that made it.
+     */
+    private val workspace = GlobalWorkspace(
+        context = context,
+        rootfsDir = config.rootfsDir,
+        binds = ::effectiveBinds,
+        defaultCwd = config.defaultCwd,
+        log = ::diag,
+    )
+
     /** Last output per session, for `terminal_getscreen`. */
     private val sessionOutput = ConcurrentHashMap<String, String>()
 
@@ -206,7 +221,7 @@ class KelivoWorkspaceHost(
                     rootfsDir = config.rootfsDir,
                     tmpDir = config.tmpDir,
                     binds = effectiveBinds(),
-                    cwd = ProotCommand.validateGuestCwd(config.defaultCwd),
+                    cwd = ProotCommand.validateGuestCwd(workspace.sessionCwd()),
                     // Keep the captured stream to the command's own output: an
                     // interactive prompt would otherwise be prepended to every
                     // result the model sees.
@@ -285,9 +300,11 @@ class KelivoWorkspaceHost(
      * rather than by keeping a process alive.
      */
     private fun runSessionCommand(sessionId: String, command: String, timeout: Long): JSONObject {
-        val cwd = sessionCwd[sessionId] ?: config.defaultCwd
+        // The launcher starts in the shared workspace too, so a directory
+        // change made anywhere is where the next call begins.
+        val cwd = workspace.sessionCwd()
         val marker = "__KELIVO_END_${markerSeq.incrementAndGet()}__"
-        val pwdMarker = "__KELIVO_PWD__"
+        val pwdMarker = PTY_CWD_MARKER
 
         val script = buildString {
             append("cd ").append(singleQuote(cwd)).append(" 2>/dev/null; ")
@@ -312,7 +329,10 @@ class KelivoWorkspaceHost(
             }
             if (text.startsWith("$pwdMarker:")) {
                 val next = text.removePrefix("$pwdMarker:").trim()
-                if (next.startsWith("/")) sessionCwd[sessionId] = next
+                if (next.startsWith("/")) {
+                    sessionCwd[sessionId] = next
+                    workspace.follow(next)
+                }
                 continue
             }
             if (!seenMarker) body.append(line).append('\n')
@@ -379,6 +399,8 @@ class KelivoWorkspaceHost(
                 // Record it here too: the interactive path used to be the one
                 // route that left the screen record stale.
                 sessionOutput[sessionId] = body
+                // The shell may have moved since the last call.
+                workspace.follow(readCwd(seen))
                 return JSONObject()
                     .put("output", body)
                     .put("exitCode", finished?.exitCode ?: -1)
@@ -388,6 +410,13 @@ class KelivoWorkspaceHost(
             Thread.sleep(POLL_MS)
         }
     }
+
+    /** The shell's own `pwd` from a submission; "" when it did not report one. */
+    private fun readCwd(seen: String): String = seen.lineSequence()
+        .firstOrNull { it.trimEnd('\r').startsWith("$PTY_CWD_MARKER:") }
+        ?.substringAfter("$PTY_CWD_MARKER:")
+        ?.trim()
+        .orEmpty()
 
     /** A finished command: its output, and the status the marker carried. */
     private data class MarkerResult(val body: String, val exitCode: Int)
@@ -527,7 +556,7 @@ class KelivoWorkspaceHost(
                 rootfsDir = config.rootfsDir,
                 tmpDir = config.tmpDir,
                 binds = effectiveBinds(),
-                cwd = ProotCommand.validateGuestCwd(config.defaultCwd),
+                cwd = ProotCommand.validateGuestCwd(workspace.sessionCwd()),
                 env = mapOf("PS1" to "", "PS2" to ""),
                 cols = SCREEN_COLS,
                 rows = SCREEN_ROWS,
@@ -679,7 +708,7 @@ class KelivoWorkspaceHost(
                     rootfsDir = config.rootfsDir,
                     tmpDir = config.tmpDir,
                     binds = effectiveBinds(),
-                    cwd = ProotCommand.validateGuestCwd(config.defaultCwd),
+                    cwd = ProotCommand.validateGuestCwd(workspace.sessionCwd()),
                     env = mapOf("PS1" to "", "PS2" to ""),
                     cols = SCREEN_COLS,
                     rows = SCREEN_ROWS,
@@ -704,6 +733,7 @@ class KelivoWorkspaceHost(
 
                 val body = stripEcho(result?.body ?: seen, payload)
                 sessionOutput[sessionId] = body
+                workspace.follow(readCwd(seen))
                 diag(
                     "pty exec fresh exit=${result?.exitCode ?: -1} timedOut=${result == null} " +
                         "bytes=${seen.length} body=${body.take(100).replace('\n', '|')}",
@@ -732,9 +762,14 @@ class KelivoWorkspaceHost(
      * "echoes but never executes" report. Both the candidate sweep and the
      * fresh-session runner executed the plain form below, so every PTY path now
      * builds its payload here.
+     *
+     * Two extra statements surround the command: an alignment `cd` into the
+     * shared workspace, so a session starts where the last one finished, and a
+     * trailing `pwd`, so the host learns where this command left the shell.
      */
     private fun ptySubmission(command: String, marker: String): String =
-        "${command} 2>&1; echo $marker:\$?\n"
+        "cd ${singleQuote(workspace.sessionCwd())} 2>/dev/null; " +
+            "${command} 2>&1; echo $marker:\$?; echo $PTY_CWD_MARKER:\$(pwd)\n"
 
     private fun awaitMarker(buffer: PtyBuffer, start: Int, timeoutMs: Long): String {
         val deadline = System.currentTimeMillis() + timeoutMs
@@ -993,6 +1028,12 @@ class KelivoWorkspaceHost(
 
         /** Printed by the probe command, looked for in the *stripped* body. */
         const val PTY_PROBE_MARKER = "__KELIVO_PTY_PROBE__"
+
+        /**
+         * Carries the shell's own `pwd` back out of a submission, so the shared
+         * workspace can follow a `cd` that ran inside the terminal.
+         */
+        const val PTY_CWD_MARKER = "__KELIVO_PWD__"
 
         /** Init file the job-control-off candidate sources; written by the host. */
         const val PTY_SHIM_GUEST_PATH = "/root/.kelivo_pty_rc"
