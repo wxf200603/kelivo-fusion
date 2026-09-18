@@ -103,6 +103,7 @@ import 'dart:io'
         stderr; // kept for global override usage inside provider
 import 'core/services/mobile_background.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/mcp/server/mcp_server_service.dart';
 import 'core/services/operit/operit_js_tools_service.dart';
 import 'features/home/controllers/chat_actions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -171,6 +172,9 @@ Future<void> main() async {
       // is not installed yet, and this channel only exists on Android.
       if (Platform.isAndroid) {
         unawaited(OperitJsToolsService.instance.warmUp());
+        // Restored here rather than on first visit to the settings page: a
+        // user who left the server on expects it back after a restart.
+        unawaited(McpServerService.instance.load());
       }
       final appDataDirectory = await AppDirectories.getAppDataDirectory();
       final RestoreReceipt? restoreOutcome;
