@@ -125,24 +125,25 @@ void main() {
     );
   });
 
-  testWidgets('a model that cannot call tools keeps the MCP servers configured', (
-    tester,
-  ) async {
-    final assistants = await loadAssistantWithMcp(tester);
+  testWidgets(
+    'a model that cannot call tools keeps the MCP servers configured',
+    (tester) async {
+      final assistants = await loadAssistantWithMcp(tester);
 
-    await pumpComposer(
-      tester,
-      assistants: assistants,
-      isConversationOverride: false,
-    );
+      await pumpComposer(
+        tester,
+        assistants: assistants,
+        isConversationOverride: false,
+      );
 
-    expect(
-      assistants.currentAssistant?.mcpServerIds,
-      const ['server-1'],
-      reason:
-          'not marking a model tool-capable is not a reason to delete a '
-          'configuration nobody asked to change; the servers stay configured '
-          'and go unused until a tool-capable model is selected',
-    );
-  });
+      expect(
+        assistants.currentAssistant?.mcpServerIds,
+        const ['server-1'],
+        reason:
+            'not marking a model tool-capable is not a reason to delete a '
+            'configuration nobody asked to change; the servers stay configured '
+            'and go unused until a tool-capable model is selected',
+      );
+    },
+  );
 }
