@@ -502,7 +502,11 @@ class _CopyButton extends StatelessWidget {
         );
       },
       child: iconOnly
-          ? Icon(Lucide.Copy, size: 15, color: cs.onSurface.withValues(alpha: 0.6))
+          ? Icon(
+              Lucide.Copy,
+              size: 15,
+              color: cs.onSurface.withValues(alpha: 0.6),
+            )
           : Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -571,7 +575,10 @@ Future<void> showMcpPortSheet(
             const SizedBox(height: 10),
             Text(
               l10n.mcpServerPagePortTitle,
-              style: TextStyle(fontSize: 17, fontWeight: AppFontWeights.emphasis),
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: AppFontWeights.emphasis,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 14),

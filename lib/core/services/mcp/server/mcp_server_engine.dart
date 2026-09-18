@@ -177,8 +177,10 @@ class McpServerEngine {
     }
   }
 
-  Map<String, dynamic> _ok(dynamic id, {required Map<String, dynamic> result}) =>
-      <String, dynamic>{'jsonrpc': '2.0', 'id': id, 'result': result};
+  Map<String, dynamic> _ok(
+    dynamic id, {
+    required Map<String, dynamic> result,
+  }) => <String, dynamic>{'jsonrpc': '2.0', 'id': id, 'result': result};
 
   Map<String, dynamic> _error(
     dynamic id, {

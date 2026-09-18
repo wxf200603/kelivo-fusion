@@ -276,9 +276,7 @@ class McpServerService extends ChangeNotifier {
     _token = _generateToken();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, _token);
-    unawaited(
-      _mark('mcp: wrote regenerated token len=${_token.length}chars'),
-    );
+    unawaited(_mark('mcp: wrote regenerated token len=${_token.length}chars'));
     notifyListeners();
     if (_running) {
       await stop();

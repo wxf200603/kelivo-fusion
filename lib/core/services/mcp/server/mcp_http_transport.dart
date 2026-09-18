@@ -273,9 +273,7 @@ class McpHttpTransport {
 
     final subscription = channel.events.listen((payload) {
       try {
-        response.write(
-          'event: message\ndata: ${jsonEncode(payload)}\n\n',
-        );
+        response.write('event: message\ndata: ${jsonEncode(payload)}\n\n');
       } catch (_) {
         // A late message for a client that already left is not an error worth
         // surfacing; the stream teardown below is the real signal.
@@ -335,10 +333,7 @@ class McpHttpTransport {
   /// Reads and decodes the request body, answering 400 itself on bad input.
   ///
   /// Returns `null` when it has already replied, so callers just bail out.
-  Future<dynamic> _readJson(
-    HttpRequest request,
-    HttpResponse response,
-  ) async {
+  Future<dynamic> _readJson(HttpRequest request, HttpResponse response) async {
     final body = await utf8.decoder.bind(request).join();
     if (body.trim().isEmpty) {
       await _writeJson(response, HttpStatus.badRequest, <String, dynamic>{

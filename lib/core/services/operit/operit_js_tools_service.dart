@@ -104,7 +104,8 @@ class OperitJsToolsService {
       _warming = false;
     }
   }
-/// Executes a namespaced tool call and returns the result for the model.
+
+  /// Executes a namespaced tool call and returns the result for the model.
   ///
   /// Every package reachable here exposes terminal/root tools, so a missing
   /// approval channel **fails closed**: silently executing would hand the model
@@ -145,9 +146,7 @@ class OperitJsToolsService {
         conversationId: conversationId,
       );
       if (!decision.approved) {
-        return _errorResult(
-          decision.denyReason ?? 'User denied the tool call',
-        );
+        return _errorResult(decision.denyReason ?? 'User denied the tool call');
       }
 
       var raw = await _callTool(route.packageName, route.tool, args);
@@ -179,12 +178,11 @@ class OperitJsToolsService {
     String pkg,
     String tool,
     Map<String, dynamic> args,
-  ) =>
-      _channel.invokeMethod<String>('callTool', {
-        'pkg': pkg,
-        'tool': tool,
-        'argsJson': jsonEncode(args),
-      });
+  ) => _channel.invokeMethod<String>('callTool', {
+    'pkg': pkg,
+    'tool': tool,
+    'argsJson': jsonEncode(args),
+  });
 
   /// True when the bridge refused to run the tool because its runtime has no
   /// workspace: the native side emits this before executing anything, so the
@@ -280,7 +278,11 @@ class OperitJsToolsService {
           'type': 'function',
           'function': <String, dynamic>{
             'name': exported,
-            'description': _describe(packageName, toolName, tool['description']),
+            'description': _describe(
+              packageName,
+              toolName,
+              tool['description'],
+            ),
             'parameters': _parameters(tool['parameters']),
           },
         });
