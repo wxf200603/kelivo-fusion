@@ -60,6 +60,17 @@ jobs:
           flutter gen-l10n
           git diff --exit-code -- lib/l10n
 
+      - name: Upload the stale l10n output
+        # This proot has no Flutter, so when the check above fails the
+        # regenerated files have to come off the runner to be committed.
+        # failure() only: a passing run has nothing to hand over, and an
+        # always-on upload would leave a stale artifact behind.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lib-l10n-regenerated
+          path: lib/l10n
+
       - name: No new untranslated messages (PR)
         if: ${{ github.event_name == 'pull_request' }}
         shell: bash
