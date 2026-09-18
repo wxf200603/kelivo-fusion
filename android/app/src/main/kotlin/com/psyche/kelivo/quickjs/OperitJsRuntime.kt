@@ -67,6 +67,9 @@ class OperitJsRuntime(
                     diag("dart: ${args["msg"]}")
                     result.success(null)
                 }
+                "workspaceCwd" -> result.success(
+                    workspaceHost?.globalCwd.orEmpty()
+                )
                 "status" -> result.success(
                     JSONObject()
                         .put("configured", runtime != null)

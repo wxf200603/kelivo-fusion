@@ -134,6 +134,18 @@ class KelivoWorkspaceHost(
     private val sessionOutput = ConcurrentHashMap<String, String>()
 
     /**
+     * The shared working directory, for callers that report it rather than use it.
+     *
+     * The MCP server mirrors this into the diagnostic log after every command, so
+     * "the terminal and the app agree on the directory" is checkable from the log
+     * instead of taken on faith. Deliberately not [GlobalWorkspace.sessionCwd]:
+     * that one verifies and may fall back, which is right before *starting* a
+     * command and wrong for describing where the last one finished.
+     */
+    val globalCwd: String
+        get() = workspace.cwd
+
+    /**
      * Everything needed to launch proot, resolved by the caller.
      *
      * The Dart side owns rootfs selection; it hands the result down once via
