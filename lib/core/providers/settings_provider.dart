@@ -99,6 +99,7 @@ class SettingsProvider extends ChangeNotifier {
   static const String _pinnedModelsKey = 'pinned_models_v1';
   static const String _selectedModelKey = 'selected_model_v1';
   static const String _perChatModelEnabledKey = 'per_chat_model_enabled_v1';
+  static const String _toolsForAllModelsKey = 'tools_for_all_models_v1';
   static const String _titleModelKey = 'title_model_v1';
   static const String _titleGenerationEnabledKey =
       'title_generation_enabled_v1';
@@ -861,6 +862,7 @@ class SettingsProvider extends ChangeNotifier {
       }
     }
     _perChatModelEnabled = prefs.getBool(_perChatModelEnabledKey) ?? false;
+    _toolsForAllModels = prefs.getBool(_toolsForAllModelsKey) ?? false;
     _titleGenerationEnabled = prefs.getBool(_titleGenerationEnabledKey) ?? true;
     // load title prompt
     final tp = prefs.getString(_titlePromptKey);
@@ -3566,6 +3568,25 @@ class SettingsProvider extends ChangeNotifier {
     await prefs.setBool(_perChatModelEnabledKey, value);
   }
 
+  /// Whether every model is offered tools, overruling the registry's guess.
+  ///
+  /// The registry reads tool support off the model's name, which cannot know
+  /// about a custom endpoint — so a model that does accept a `tools` array
+  /// still saw every tool, and the assistant's MCP servers with them, treated
+  /// as unusable. Defaults to off: a provider that genuinely cannot take
+  /// `tools` will reject the whole request, so widening this is the user's call
+  /// and not ours.
+  bool _toolsForAllModels = false;
+  bool get toolsForAllModels => _toolsForAllModels;
+
+  Future<void> setToolsForAllModels(bool value) async {
+    if (_toolsForAllModels == value) return;
+    _toolsForAllModels = value;
+    notifyListeners();
+    final prefs = _preferences;
+    await prefs.setBool(_toolsForAllModelsKey, value);
+  }
+
   // Title model and prompt
   String? _titleModelProvider;
   String? _titleModelId;
@@ -5677,6 +5698,7 @@ Requirements:
     copy._currentModelProvider = _currentModelProvider;
     copy._currentModelId = _currentModelId;
     copy._perChatModelEnabled = _perChatModelEnabled;
+    copy._toolsForAllModels = _toolsForAllModels;
     copy._titleModelProvider = _titleModelProvider;
     copy._titleModelId = _titleModelId;
     copy._titleGenerationEnabled = _titleGenerationEnabled;

@@ -344,15 +344,11 @@ class ChatInputSection extends StatelessWidget {
   ) {
     if (pk == null || mid == null) return;
 
-    final supportsTools = isToolModel(pk, mid);
-    if (!supportsTools && (a?.mcpServerIds.isNotEmpty ?? false)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final aa = ap.currentAssistant;
-        if (aa != null && aa.mcpServerIds.isNotEmpty) {
-          ap.updateAssistant(aa.copyWith(mcpServerIds: const <String>[]));
-        }
-      });
-    }
+    // Nothing is cleared here on purpose. Switching to a model the registry
+    // does not mark as tool-capable used to delete the assistant's MCP servers
+    // as a side effect — a configuration change nobody asked for, and one that
+    // switching back did not restore. They now stay configured and simply go
+    // unused until a model that can call tools is selected again.
 
     final supportsReasoning = isReasoningModel(pk, mid);
     if (!supportsReasoning && a != null) {

@@ -1,4 +1,6 @@
 {
+  "toolSchemaSettingsModelToolsTitle": "所有模型都启用工具",
+  "toolSchemaSettingsModelToolsSubtitle": "关闭时：只有注册表标注支持工具的模型才会注入工具与 MCP。开启后：任何模型都会注入——适合名字看不出是否支持 function calling 的自定义端点。若接口本身不接受 tools 参数，请求会直接失败，而不是被忽略。",
   "mcpServerPageTitle": "内置 MCP 服务端",
   "mcpServerPageEnable": "对外提供本工作区",
   "mcpServerPageStatusRunning": "监听中",

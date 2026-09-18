@@ -7,6 +7,7 @@ import '../../../core/services/tools/built_in_tool_catalog.dart';
 import '../../../features/home/services/local_tools_service.dart';
 import '../../../icons/lucide_adapter.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../shared/widgets/ios_switch.dart';
 import '../../../shared/widgets/ios_tactile.dart';
 import '../../../shared/widgets/section_card.dart';
 import '../../../theme/app_font_weights.dart';
@@ -78,6 +79,8 @@ class _ToolSchemaSettingsPageState extends State<ToolSchemaSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
+          _ModelToolsCard(settings: settings),
+          const SizedBox(height: 16),
           for (final group in BuiltInToolGroup.values)
             ..._groupSection(
               context,
@@ -162,6 +165,62 @@ class _ToolSchemaSettingsPageState extends State<ToolSchemaSettingsPage> {
     await context.read<SettingsProvider>().setToolSchemaOverride(
       entry.name,
       result,
+    );
+  }
+}
+
+/// The one switch that overrules the model registry's tool inference.
+///
+/// It belongs on the tools page rather than the model page because it is a
+/// statement about tools: every model gets them, whatever the registry guessed
+/// from a name it cannot possibly know the meaning of.
+class _ModelToolsCard extends StatelessWidget {
+  const _ModelToolsCard({required this.settings});
+
+  final SettingsProvider settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
+
+    return SectionCard(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  l10n.toolSchemaSettingsModelToolsTitle,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: AppFontWeights.emphasis,
+                  ),
+                ),
+              ),
+              IosSwitch(
+                value: settings.toolsForAllModels,
+                onChanged: (value) {
+                  settings.setToolsForAllModels(value);
+                },
+                semanticLabel: l10n.toolSchemaSettingsModelToolsTitle,
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+          child: Text(
+            l10n.toolSchemaSettingsModelToolsSubtitle,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.45,
+              color: cs.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

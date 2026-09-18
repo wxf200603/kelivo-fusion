@@ -1,4 +1,6 @@
 {
+  "toolSchemaSettingsModelToolsTitle": "Enable tools for every model",
+  "toolSchemaSettingsModelToolsSubtitle": "Off: only models the registry marks as tool-capable are offered tools and MCP. On: every model is — which is what a custom endpoint needs when its name says nothing about function calling. A provider that cannot accept a tools array will reject the request instead of ignoring it.",
   "mcpServerPageTitle": "Built-in MCP server",
   "mcpServerPageEnable": "Serve this workspace",
   "mcpServerPageStatusRunning": "Listening",

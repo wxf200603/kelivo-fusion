@@ -104,6 +104,11 @@ class GenerationController {
           const [];
       return abilities.contains('tool');
     }
+    // The user's blanket answer outranks the registry's guess. It sits after
+    // the per-model `abilities` override above, because that one is narrower:
+    // "this model" beats "all models".
+    if (settings.toolsForAllModels) return true;
+
     final inferred = ModelRegistry.infer(
       ModelInfo(id: modelId, displayName: modelId),
     );
