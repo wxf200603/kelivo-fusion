@@ -155,8 +155,10 @@ class KelivoWorkspaceHost(
             // still being a persistent, interactive shell.
             val bash = File(config.rootfsDir, "bin/bash")
             val guestShellPath = if (bash.isFile) "/bin/bash" else null
+            // bash only accepts long options *before* short ones: `-l --noediting`
+            // is rejected with "`--`: invalid option".
             val guestShellArgs =
-                if (bash.isFile) listOf("-l", "--noediting") else listOf("-l")
+                if (bash.isFile) listOf("--noediting", "-l") else listOf("-l")
 
             val pid = try {
                 ptySessions.open(
