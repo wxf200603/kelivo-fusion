@@ -245,7 +245,7 @@ class KelivoWorkspaceHost(
         val script = buildString {
             append("cd ").append(singleQuote(cwd)).append(" 2>/dev/null; ")
             append("{ ").append(command).append(" ; }2>&1; ")
-            append("__kelivo_status=$?; echo ").append(marker).append(":$__kelivo_status; ")
+            append("__kelivo_status=$?; echo ").append(marker).append(":\$__kelivo_status; ")
             append("echo ").append(pwdMarker).append(":$(pwd)")
         }
 
