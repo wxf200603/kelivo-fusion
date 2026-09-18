@@ -94,6 +94,9 @@ class KelivoWorkspaceHost(
     private val ptySessions = PtySessions(ptyEvents)
     private val ptyBuffers = ConcurrentHashMap<String, PtyBuffer>()
     private val sessions = ConcurrentHashMap<String, PtyHandle>()
+
+    /** Sessions whose one-shot PTY round trip has already been attempted. */
+    private val ptyProbed = ConcurrentHashMap<String, Boolean>()
     private val markerSeq = AtomicLong()
 
     /** Working directory per session, so `cd` survives between calls. */
@@ -149,7 +152,9 @@ class KelivoWorkspaceHost(
 
     override fun terminalCreate(sessionName: String): String {
         val id = sessionName.ifBlank { "kelivo-${System.nanoTime()}" }
-        ensureSession(id)
+        // The interactive path was reported broken before; re-check it on every
+        // new session so the claim is either confirmed or retired by evidence.
+        ensureSession(id)?.let { probePty(it) }
         return id
     }
 
@@ -228,10 +233,11 @@ class KelivoWorkspaceHost(
     /**
      * Runs one command and returns the model-facing result.
      *
-     * Deliberately *not* routed through a PTY. Interactive PTYs are wired up
-     * ([ensureSession], [terminalInput], [terminalScreen]) but on device the
-     * shell never received what was written to the master side, so commands go
-     * through the proot launcher that is verified to work.
+     * Still routed through the proot launcher rather than the PTY: that path is
+     * verified, and its marker protocol keeps the captured stream to the
+     * command's own output. [probePty] reports whether the interactive path
+     * works on this build, so a future switch to PTY submission is based on
+     * evidence instead of the earlier assumption that it never worked.
      *
      * Session identity is preserved by carrying the working directory across
      * calls — the state agents actually rely on (`cd`, then relative paths) —
@@ -287,13 +293,16 @@ class KelivoWorkspaceHost(
         "'" + value.replace("'", "'\\''") + "'"
 
     /**
-     * Interactive PTY dispatch, kept for reference but currently unused.
+     * Interactive PTY dispatch: writes a command into the session's PTY and
+     * waits for the marker line the shell prints back.
      *
-     * The PTY opens and echoes, yet the shell inside never receives what is
-     * written to the master side, so no command ever runs through it. See the
-     * class comment; [terminalExec] uses [runSessionCommand] instead.
+     * Once written off — the PTY echoed input while the shell never ran a
+     * command. An on-device reproduction with this exact proot argv and shell
+     * did execute the command, and `--noediting` above is the fix for the
+     * readline case, so the old verdict is no longer taken on faith.
+     * [probePty] re-tests it; this is the path [terminalInput] and [terminalScreen]
+     * already serve.
      */
-    @Suppress("unused")
     private fun runPtyCommand(sessionId: String, trimmed: String, timeout: Long): JSONObject {
         val session = ensureSession(sessionId)
             ?: return runProotResult(trimmed, timeout, sessionId)
@@ -385,6 +394,30 @@ class KelivoWorkspaceHost(
         } else {
             body.trimEnd()
         }
+    }
+
+    /**
+     * One-shot marker round trip that answers "can this PTY actually run a command?".
+     *
+     * [runPtyCommand] strips the line the PTY echoed back, so a shell that never
+     * executes anything leaves an empty body while a working one leaves the text
+     * the command itself printed. The verdict is written to the diagnostics file
+     * so the claim stops being a matter of recollection.
+     */
+    private fun probePty(session: PtyHandle) {
+        if (ptyProbed.putIfAbsent(session.id, true) != null) return
+        val result = try {
+            runPtyCommand(session.id, "echo $PTY_PROBE_MARKER", PTY_PROBE_TIMEOUT_MS)
+        } catch (error: Exception) {
+            diag("pty probe ${session.id} threw ${error.javaClass.simpleName}: ${error.message}")
+            return
+        }
+        val body = result.optString("output")
+        diag(
+            "pty probe ${session.id} ran=${body.contains(PTY_PROBE_MARKER)} " +
+                "exit=${result.optInt("exitCode")} timedOut=${result.optBoolean("timedOut")} " +
+                "body=${body.take(120).replace('\n', '|')}",
+        )
     }
 
     private fun send(session: PtyHandle, text: String): Boolean =
@@ -606,6 +639,12 @@ class KelivoWorkspaceHost(
 
         /** How often `terminalExec` re-reads the PTY buffer while waiting. */
         const val POLL_MS = 25L
+
+        /** Budget for the one-shot interactive probe; a login shell may be slow. */
+        const val PTY_PROBE_TIMEOUT_MS = 4_000L
+
+        /** Printed by the probe command, looked for in the *stripped* body. */
+        const val PTY_PROBE_MARKER = "__KELIVO_PTY_PROBE__"
 
         /** Cap on captured PTY bytes per session; the oldest half is dropped. */
         const val MAX_PTY_BUFFER_BYTES = 512 * 1024
