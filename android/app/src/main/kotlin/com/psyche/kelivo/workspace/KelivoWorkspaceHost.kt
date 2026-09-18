@@ -96,6 +96,12 @@ class KelivoWorkspaceHost(
     private val sessions = ConcurrentHashMap<String, PtyHandle>()
     private val markerSeq = AtomicLong()
 
+    /** Working directory per session, so `cd` survives between calls. */
+    private val sessionCwd = ConcurrentHashMap<String, String>()
+
+    /** Last output per session, for `terminal_getscreen`. */
+    private val sessionOutput = ConcurrentHashMap<String, String>()
+
     /**
      * Everything needed to launch proot, resolved by the caller.
      *
@@ -216,6 +222,77 @@ class KelivoWorkspaceHost(
         val trimmed = command.trim()
         if (trimmed.isEmpty()) return unavailable(sessionId, "empty command")
 
+        return runSessionCommand(sessionId, trimmed, timeout)
+    }
+
+    /**
+     * Runs one command and returns the model-facing result.
+     *
+     * Deliberately *not* routed through a PTY. Interactive PTYs are wired up
+     * ([ensureSession], [terminalInput], [terminalScreen]) but on device the
+     * shell never received what was written to the master side, so commands go
+     * through the proot launcher that is verified to work.
+     *
+     * Session identity is preserved by carrying the working directory across
+     * calls — the state agents actually rely on (`cd`, then relative paths) —
+     * rather than by keeping a process alive.
+     */
+    private fun runSessionCommand(sessionId: String, command: String, timeout: Long): JSONObject {
+        val cwd = sessionCwd[sessionId] ?: config.defaultCwd
+        val marker = "__KELIVO_END_${markerSeq.incrementAndGet()}__"
+        val pwdMarker = "__KELIVO_PWD__"
+
+        val script = buildString {
+            append("cd ").append(singleQuote(cwd)).append(" 2>/dev/null; ")
+            append("{ ").append(command).append(" ; }2>&1; ")
+            append("__kelivo_status=$?; echo ").append(marker).append(":$__kelivo_status; ")
+            append("echo ").append(pwdMarker).append(":$(pwd)")
+        }
+
+        val outcome = synchronized(execLock) { runProot(script, cwd, timeout) }
+
+        val body = StringBuilder()
+        var seenMarker = false
+        var exitCode = -1
+        for (line in outcome.output.lines()) {
+            val text = line.trimEnd('\r')
+            if (text.startsWith("$marker:")) {
+                seenMarker = true
+                exitCode = text.removePrefix("$marker:").trim().toIntOrNull() ?: -1
+                continue
+            }
+            if (text.startsWith("$pwdMarker:")) {
+                val next = text.removePrefix("$pwdMarker:").trim()
+                if (next.startsWith("/")) sessionCwd[sessionId] = next
+                continue
+            }
+            if (!seenMarker) body.append(line).append('\n')
+        }
+
+        val output = body.toString().trimEnd()
+        sessionOutput[sessionId] = output
+        diag("exec $sessionId exit=$exitCode timedOut=${outcome.timedOut} cwd=${sessionCwd[sessionId]}")
+
+        return JSONObject()
+            .put("output", output)
+            .put("exitCode", if (outcome.timedOut) -1 else exitCode)
+            .put("sessionId", sessionId)
+            .put("timedOut", outcome.timedOut)
+    }
+
+    /** POSIX single-quoting, so a path with spaces or quotes stays one word. */
+    private fun singleQuote(value: String): String =
+        "'" + value.replace("'", "'\\''") + "'"
+
+    /**
+     * Interactive PTY dispatch, kept for reference but currently unused.
+     *
+     * The PTY opens and echoes, yet the shell inside never receives what is
+     * written to the master side, so no command ever runs through it. See the
+     * class comment; [terminalExec] uses [runSessionCommand] instead.
+     */
+    @Suppress("unused")
+    private fun runPtyCommand(sessionId: String, trimmed: String, timeout: Long): JSONObject {
         val session = ensureSession(sessionId)
             ?: return runProotResult(trimmed, timeout, sessionId)
         val buffer = ptyBuffers[sessionId]
@@ -331,7 +408,7 @@ class KelivoWorkspaceHost(
      * need a terminal emulator; the tail is what an agent actually needs.
      */
     override fun terminalScreen(sessionId: String): JSONObject {
-        val content = ptyBuffers[sessionId]?.all().orEmpty()
+        val content = sessionOutput[sessionId].orEmpty()
         return JSONObject()
             .put("sessionId", sessionId)
             .put("rows", SCREEN_ROWS)
