@@ -9,6 +9,75 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get toolSchemaSettingsModelToolsTitle =>
+      'Enable tools for every model';
+
+  @override
+  String get toolSchemaSettingsModelToolsSubtitle =>
+      'Off: only models the registry marks as tool-capable are offered tools and MCP. On: every model is — which is what a custom endpoint needs when its name says nothing about function calling. A provider that cannot accept a tools array will reject the request instead of ignoring it.';
+
+  @override
+  String get mcpServerPageTitle => 'Built-in MCP server';
+
+  @override
+  String get mcpServerPageEnable => 'Serve this workspace';
+
+  @override
+  String get mcpServerPageStatusRunning => 'Listening';
+
+  @override
+  String get mcpServerPageStatusStopped => 'Stopped';
+
+  @override
+  String get mcpServerPageListenerHint =>
+      'Exposes the proot terminal over MCP. Any client that can reach this device can run commands in the same working directory the assistant uses.';
+
+  @override
+  String get mcpServerPageEndpoints => 'Client URLs';
+
+  @override
+  String get mcpServerPageToken => 'Access token';
+
+  @override
+  String get mcpServerPageTokenHint =>
+      'Clients must send it as: Authorization: Bearer <token>';
+
+  @override
+  String get mcpServerPageNetwork => 'Network';
+
+  @override
+  String get mcpServerPagePort => 'Port';
+
+  @override
+  String get mcpServerPageAllowLan => 'Allow other devices';
+
+  @override
+  String get mcpServerPageAllowLanHint =>
+      'Off keeps the server on 127.0.0.1, reachable only from this device. On lets a PC on the same Wi-Fi connect.';
+
+  @override
+  String get mcpServerPagePcHint =>
+      'A client on your PC cannot see the phone\'s 127.0.0.1. Either turn on \"Allow other devices\" and use this device\'s Wi-Fi address, or forward the port from the PC:';
+
+  @override
+  String get mcpServerPageCopy => 'Copy';
+
+  @override
+  String get mcpServerPageCopied => 'Copied';
+
+  @override
+  String get mcpServerPagePortTitle => 'Server port';
+
+  @override
+  String get mcpServerPagePortInvalid => 'Enter a port between 1024 and 65535';
+
+  @override
+  String get mcpServerPageTransportHttp => 'Streamable HTTP';
+
+  @override
+  String get mcpServerPageTransportSse => 'SSE (legacy)';
+
+  @override
   String get settingsSearchHint => 'Search settings';
 
   @override

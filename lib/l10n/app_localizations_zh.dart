@@ -9,6 +9,73 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get toolSchemaSettingsModelToolsTitle => '所有模型都启用工具';
+
+  @override
+  String get toolSchemaSettingsModelToolsSubtitle =>
+      '关闭时：只有注册表标注支持工具的模型才会注入工具与 MCP。开启后：任何模型都会注入——适合名字看不出是否支持 function calling 的自定义端点。若接口本身不接受 tools 参数，请求会直接失败，而不是被忽略。';
+
+  @override
+  String get mcpServerPageTitle => '内置 MCP 服务端';
+
+  @override
+  String get mcpServerPageEnable => '对外提供本工作区';
+
+  @override
+  String get mcpServerPageStatusRunning => '监听中';
+
+  @override
+  String get mcpServerPageStatusStopped => '已停止';
+
+  @override
+  String get mcpServerPageListenerHint =>
+      '通过 MCP 暴露 proot 终端。任何能连到本机的客户端，都能在助手使用的工作目录里执行命令。';
+
+  @override
+  String get mcpServerPageEndpoints => '客户端地址';
+
+  @override
+  String get mcpServerPageToken => '访问令牌';
+
+  @override
+  String get mcpServerPageTokenHint => '客户端需以如下方式携带：Authorization: Bearer <令牌>';
+
+  @override
+  String get mcpServerPageNetwork => '网络';
+
+  @override
+  String get mcpServerPagePort => '端口';
+
+  @override
+  String get mcpServerPageAllowLan => '允许其他设备连接';
+
+  @override
+  String get mcpServerPageAllowLanHint =>
+      '关闭时只监听 127.0.0.1，仅本机可用。开启后同一 Wi-Fi 下的电脑才能连上。';
+
+  @override
+  String get mcpServerPagePcHint =>
+      '电脑上的客户端看不到手机的 127.0.0.1。要么打开「允许其他设备连接」并使用本机的 Wi-Fi 地址，要么在电脑上把端口转发过来：';
+
+  @override
+  String get mcpServerPageCopy => '复制';
+
+  @override
+  String get mcpServerPageCopied => '已复制';
+
+  @override
+  String get mcpServerPagePortTitle => '服务端端口';
+
+  @override
+  String get mcpServerPagePortInvalid => '请输入 1024 到 65535 之间的端口';
+
+  @override
+  String get mcpServerPageTransportHttp => 'Streamable HTTP';
+
+  @override
+  String get mcpServerPageTransportSse => 'SSE（旧版）';
+
+  @override
   String get settingsSearchHint => '搜索设置';
 
   @override
@@ -11376,6 +11443,73 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
   AppLocalizationsZhHans() : super('zh_Hans');
 
   @override
+  String get toolSchemaSettingsModelToolsTitle => '所有模型都启用工具';
+
+  @override
+  String get toolSchemaSettingsModelToolsSubtitle =>
+      '关闭时：只有注册表标注支持工具的模型才会注入工具与 MCP。开启后：任何模型都会注入——适合名字看不出是否支持 function calling 的自定义端点。若接口本身不接受 tools 参数，请求会直接失败，而不是被忽略。';
+
+  @override
+  String get mcpServerPageTitle => '内置 MCP 服务端';
+
+  @override
+  String get mcpServerPageEnable => '对外提供本工作区';
+
+  @override
+  String get mcpServerPageStatusRunning => '监听中';
+
+  @override
+  String get mcpServerPageStatusStopped => '已停止';
+
+  @override
+  String get mcpServerPageListenerHint =>
+      '通过 MCP 暴露 proot 终端。任何能连到本机的客户端，都能在助手使用的工作目录里执行命令。';
+
+  @override
+  String get mcpServerPageEndpoints => '客户端地址';
+
+  @override
+  String get mcpServerPageToken => '访问令牌';
+
+  @override
+  String get mcpServerPageTokenHint => '客户端需以如下方式携带：Authorization: Bearer <令牌>';
+
+  @override
+  String get mcpServerPageNetwork => '网络';
+
+  @override
+  String get mcpServerPagePort => '端口';
+
+  @override
+  String get mcpServerPageAllowLan => '允许其他设备连接';
+
+  @override
+  String get mcpServerPageAllowLanHint =>
+      '关闭时只监听 127.0.0.1，仅本机可用。开启后同一 Wi-Fi 下的电脑才能连上。';
+
+  @override
+  String get mcpServerPagePcHint =>
+      '电脑上的客户端看不到手机的 127.0.0.1。要么打开「允许其他设备连接」并使用本机的 Wi-Fi 地址，要么在电脑上把端口转发过来：';
+
+  @override
+  String get mcpServerPageCopy => '复制';
+
+  @override
+  String get mcpServerPageCopied => '已复制';
+
+  @override
+  String get mcpServerPagePortTitle => '服务端端口';
+
+  @override
+  String get mcpServerPagePortInvalid => '请输入 1024 到 65535 之间的端口';
+
+  @override
+  String get mcpServerPageTransportHttp => 'Streamable HTTP';
+
+  @override
+  String get mcpServerPageTransportSse => 'SSE（旧版）';
+
+  @override
   String get settingsSearchHint => '搜索设置';
 
   @override
@@ -22667,6 +22801,73 @@ class AppLocalizationsZhHans extends AppLocalizationsZh {
 /// The translations for Chinese, using the Han script (`zh_Hant`).
 class AppLocalizationsZhHant extends AppLocalizationsZh {
   AppLocalizationsZhHant() : super('zh_Hant');
+
+  @override
+  String get toolSchemaSettingsModelToolsTitle => '所有模型都啟用工具';
+
+  @override
+  String get toolSchemaSettingsModelToolsSubtitle =>
+      '關閉時：只有登錄表標註支援工具的模型才會注入工具與 MCP。開啟後：任何模型都會注入——適合名字看不出是否支援 function calling 的自訂端點。若介面本身不接受 tools 參數，請求會直接失敗，而不是被忽略。';
+
+  @override
+  String get mcpServerPageTitle => '內建 MCP 伺服端';
+
+  @override
+  String get mcpServerPageEnable => '對外提供本工作區';
+
+  @override
+  String get mcpServerPageStatusRunning => '監聽中';
+
+  @override
+  String get mcpServerPageStatusStopped => '已停止';
+
+  @override
+  String get mcpServerPageListenerHint =>
+      '透過 MCP 暴露 proot 終端。任何能連到本機的用戶端，都能在助手使用的工作目錄裡執行命令。';
+
+  @override
+  String get mcpServerPageEndpoints => '用戶端位址';
+
+  @override
+  String get mcpServerPageToken => '存取權杖';
+
+  @override
+  String get mcpServerPageTokenHint => '用戶端需以如下方式攜帶：Authorization: Bearer <權杖>';
+
+  @override
+  String get mcpServerPageNetwork => '網路';
+
+  @override
+  String get mcpServerPagePort => '連接埠';
+
+  @override
+  String get mcpServerPageAllowLan => '允許其他裝置連線';
+
+  @override
+  String get mcpServerPageAllowLanHint =>
+      '關閉時只監聽 127.0.0.1，僅本機可用。開啟後同一 Wi-Fi 下的電腦才能連上。';
+
+  @override
+  String get mcpServerPagePcHint =>
+      '電腦上的用戶端看不到手機的 127.0.0.1。要麼開啟「允許其他裝置連線」並使用本機的 Wi-Fi 位址，要麼在電腦上把連接埠轉送過來：';
+
+  @override
+  String get mcpServerPageCopy => '複製';
+
+  @override
+  String get mcpServerPageCopied => '已複製';
+
+  @override
+  String get mcpServerPagePortTitle => '伺服端連接埠';
+
+  @override
+  String get mcpServerPagePortInvalid => '請輸入 1024 到 65535 之間的連接埠';
+
+  @override
+  String get mcpServerPageTransportHttp => 'Streamable HTTP';
+
+  @override
+  String get mcpServerPageTransportSse => 'SSE（舊版）';
 
   @override
   String get settingsSearchHint => '搜尋設定';

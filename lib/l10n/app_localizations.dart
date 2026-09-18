@@ -100,6 +100,132 @@ abstract class AppLocalizations {
     Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
   ];
 
+  /// No description provided for @toolSchemaSettingsModelToolsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable tools for every model'**
+  String get toolSchemaSettingsModelToolsTitle;
+
+  /// No description provided for @toolSchemaSettingsModelToolsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Off: only models the registry marks as tool-capable are offered tools and MCP. On: every model is — which is what a custom endpoint needs when its name says nothing about function calling. A provider that cannot accept a tools array will reject the request instead of ignoring it.'**
+  String get toolSchemaSettingsModelToolsSubtitle;
+
+  /// No description provided for @mcpServerPageTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Built-in MCP server'**
+  String get mcpServerPageTitle;
+
+  /// No description provided for @mcpServerPageEnable.
+  ///
+  /// In en, this message translates to:
+  /// **'Serve this workspace'**
+  String get mcpServerPageEnable;
+
+  /// No description provided for @mcpServerPageStatusRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening'**
+  String get mcpServerPageStatusRunning;
+
+  /// No description provided for @mcpServerPageStatusStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped'**
+  String get mcpServerPageStatusStopped;
+
+  /// No description provided for @mcpServerPageListenerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Exposes the proot terminal over MCP. Any client that can reach this device can run commands in the same working directory the assistant uses.'**
+  String get mcpServerPageListenerHint;
+
+  /// No description provided for @mcpServerPageEndpoints.
+  ///
+  /// In en, this message translates to:
+  /// **'Client URLs'**
+  String get mcpServerPageEndpoints;
+
+  /// No description provided for @mcpServerPageToken.
+  ///
+  /// In en, this message translates to:
+  /// **'Access token'**
+  String get mcpServerPageToken;
+
+  /// No description provided for @mcpServerPageTokenHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Clients must send it as: Authorization: Bearer <token>'**
+  String get mcpServerPageTokenHint;
+
+  /// No description provided for @mcpServerPageNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Network'**
+  String get mcpServerPageNetwork;
+
+  /// No description provided for @mcpServerPagePort.
+  ///
+  /// In en, this message translates to:
+  /// **'Port'**
+  String get mcpServerPagePort;
+
+  /// No description provided for @mcpServerPageAllowLan.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow other devices'**
+  String get mcpServerPageAllowLan;
+
+  /// No description provided for @mcpServerPageAllowLanHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Off keeps the server on 127.0.0.1, reachable only from this device. On lets a PC on the same Wi-Fi connect.'**
+  String get mcpServerPageAllowLanHint;
+
+  /// No description provided for @mcpServerPagePcHint.
+  ///
+  /// In en, this message translates to:
+  /// **'A client on your PC cannot see the phone\'s 127.0.0.1. Either turn on \"Allow other devices\" and use this device\'s Wi-Fi address, or forward the port from the PC:'**
+  String get mcpServerPagePcHint;
+
+  /// No description provided for @mcpServerPageCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get mcpServerPageCopy;
+
+  /// No description provided for @mcpServerPageCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get mcpServerPageCopied;
+
+  /// No description provided for @mcpServerPagePortTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Server port'**
+  String get mcpServerPagePortTitle;
+
+  /// No description provided for @mcpServerPagePortInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a port between 1024 and 65535'**
+  String get mcpServerPagePortInvalid;
+
+  /// No description provided for @mcpServerPageTransportHttp.
+  ///
+  /// In en, this message translates to:
+  /// **'Streamable HTTP'**
+  String get mcpServerPageTransportHttp;
+
+  /// No description provided for @mcpServerPageTransportSse.
+  ///
+  /// In en, this message translates to:
+  /// **'SSE (legacy)'**
+  String get mcpServerPageTransportSse;
+
   /// No description provided for @settingsSearchHint.
   ///
   /// In en, this message translates to:
