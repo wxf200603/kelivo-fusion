@@ -93,7 +93,6 @@ import 'shared/widgets/restore_progress_screen.dart';
 import 'shared/widgets/restore_outcome_notice.dart';
 import 'shared/widgets/update_required_screen.dart';
 import 'package:system_fonts/system_fonts.dart';
-import 'dart:async' show unawaited;
 import 'dart:io'
     show
         Directory,

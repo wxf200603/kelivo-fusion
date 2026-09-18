@@ -62,11 +62,10 @@ class McpServerEngine {
     required this.serverName,
     required this.serverVersion,
     required List<McpServerTool> tools,
-    void Function(String message)? diag,
+    this.diag,
   }) : _tools = <String, McpServerTool>{
          for (final tool in tools) tool.name: tool,
-       },
-       _diag = diag;
+       };
 
   /// Name reported in `initialize`'s `serverInfo`.
   final String serverName;
@@ -75,7 +74,7 @@ class McpServerEngine {
   final String serverVersion;
 
   final Map<String, McpServerTool> _tools;
-  final void Function(String message)? _diag;
+  final void Function(String message)? diag;
 
   bool _closed = false;
 
@@ -118,7 +117,7 @@ class McpServerEngine {
     // A notification carries no id and must not be answered. `initialized` is
     // the one clients always send, so logging it keeps handshakes traceable.
     if (id == null) {
-      _diag?.call('mcp: notification ${method.isEmpty ? '(none)' : method}');
+      diag?.call('mcp: notification ${method.isEmpty ? '(none)' : method}');
       return null;
     }
 

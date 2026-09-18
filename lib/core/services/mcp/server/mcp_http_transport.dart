@@ -22,9 +22,8 @@ class McpHttpTransport {
     required this.token,
     InternetAddress? address,
     this.port = 0,
-    void Function(String message)? diag,
-  }) : address = address ?? InternetAddress.loopbackIPv4,
-       _diag = diag;
+    this.diag,
+  }) : address = address ?? InternetAddress.loopbackIPv4;
 
   /// The protocol implementation every request is routed into.
   final McpServerEngine engine;
@@ -44,7 +43,7 @@ class McpHttpTransport {
   /// Port to bind; 0 asks the OS for a free one.
   final int port;
 
-  final void Function(String message)? _diag;
+  final void Function(String message)? diag;
 
   HttpServer? _server;
   final Map<String, _SseChannel> _streams = <String, _SseChannel>{};
@@ -70,10 +69,10 @@ class McpHttpTransport {
 
     final server = await HttpServer.bind(address, port);
     _server = server;
-    _diag?.call('mcp: server listening on ${address.address}:${server.port}');
+    diag?.call('mcp: server listening on ${address.address}:${server.port}');
     server.listen(
       (request) => unawaited(_handleRequest(request)),
-      onError: (Object error) => _diag?.call('mcp: server error $error'),
+      onError: (Object error) => diag?.call('mcp: server error $error'),
     );
     return server.port;
   }
@@ -87,7 +86,7 @@ class McpHttpTransport {
     final server = _server;
     _server = null;
     await server?.close(force: true);
-    if (server != null) _diag?.call('mcp: server stopped');
+    if (server != null) diag?.call('mcp: server stopped');
   }
 
   // --------------------------------------------------------------- routing
@@ -105,7 +104,7 @@ class McpHttpTransport {
       }
 
       if (!_authorized(request)) {
-        _diag?.call(
+        diag?.call(
           'mcp: rejected ${request.method} ${request.uri.path} (bad token)',
         );
         await _writeJson(response, HttpStatus.unauthorized, <String, dynamic>{
@@ -138,7 +137,7 @@ class McpHttpTransport {
         'error': 'not found: $path',
       });
     } catch (error) {
-      _diag?.call('mcp: request failed $error');
+      diag?.call('mcp: request failed $error');
       try {
         await _writeJson(response, HttpStatus.internalServerError, {
           'error': '$error',
@@ -268,7 +267,7 @@ class McpHttpTransport {
       response.write('event: ${entry.key}\ndata: $data\n\n');
     }
     await response.flush();
-    _diag?.call('mcp: stream open ${channel.id}');
+    diag?.call('mcp: stream open ${channel.id}');
 
     final subscription = channel.events.listen((payload) {
       try {
@@ -304,7 +303,7 @@ class McpHttpTransport {
       } catch (_) {
         // Already closed by the peer.
       }
-      _diag?.call('mcp: stream closed ${channel.id}');
+      diag?.call('mcp: stream closed ${channel.id}');
     }
   }
 

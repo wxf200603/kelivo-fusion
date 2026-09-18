@@ -13,9 +13,9 @@ import 'mcp_server_engine.dart';
 /// external client share the *model's* working directory — a second, separate
 /// shell would silently diverge from it on the first `cd`.
 class McpWorkspaceTools {
-  McpWorkspaceTools({void Function(String message)? diag}) : _diag = diag;
+  McpWorkspaceTools({this.diag});
 
-  final void Function(String message)? _diag;
+  final void Function(String message)? diag;
 
   /// The bridge channel shared with the Operit runtime.
   static const MethodChannel _channel = MethodChannel('app.operit_js');
@@ -192,7 +192,7 @@ class McpWorkspaceTools {
   /// Mirrors an event into `operit_js_diag.log` — the only log a release build
   /// exposes on device. Never throws: diagnostics must not fail a tool call.
   Future<void> _mark(String message) async {
-    _diag?.call(message);
+    diag?.call(message);
     try {
       await _channel.invokeMethod<void>('diag', <String, dynamic>{
         'msg': message,
