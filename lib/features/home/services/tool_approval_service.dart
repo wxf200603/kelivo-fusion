@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+
+import '../../../utils/app_directories.dart';
 
 /// Result of a tool approval request.
 class ToolApprovalResult {
@@ -117,6 +121,16 @@ class ToolApprovalService extends ChangeNotifier {
       conversationId: _storedConversationId(conversationId),
       completer: completer,
     );
+    unawaited(
+      _audit(
+        'request',
+        toolName: toolName,
+        toolCallId: toolCallId,
+        conversationId: _storedConversationId(conversationId),
+        // Keys only: argument *values* can carry secrets.
+        detail: arguments.keys.join(','),
+      ),
+    );
     notifyListeners();
     return completer.future;
   }
@@ -130,6 +144,14 @@ class ToolApprovalService extends ChangeNotifier {
     if (req != null && !req._completer.isCompleted) {
       req._completer.complete(ToolApprovalResult.approved());
     }
+    unawaited(
+      _audit(
+        'approved',
+        toolName: req?.toolName,
+        toolCallId: toolCallId,
+        conversationId: conversationId,
+      ),
+    );
     notifyListeners();
   }
 
@@ -142,6 +164,15 @@ class ToolApprovalService extends ChangeNotifier {
     if (req != null && !req._completer.isCompleted) {
       req._completer.complete(ToolApprovalResult.denied(reason));
     }
+    unawaited(
+      _audit(
+        'denied',
+        toolName: req?.toolName,
+        toolCallId: toolCallId,
+        conversationId: conversationId,
+        detail: reason,
+      ),
+    );
     notifyListeners();
   }
 
@@ -150,6 +181,15 @@ class ToolApprovalService extends ChangeNotifier {
     for (final req in _pending.values) {
       if (!req._completer.isCompleted) {
         req._completer.complete(ToolApprovalResult.denied('cancelled'));
+        unawaited(
+          _audit(
+            'cancelled',
+            toolName: req.toolName,
+            toolCallId: req.toolCallId,
+            conversationId: req.conversationId,
+            detail: 'stream_cancelled',
+          ),
+        );
       }
     }
     _pending.clear();
@@ -173,9 +213,71 @@ class ToolApprovalService extends ChangeNotifier {
       _pending.removeWhere((_, value) => identical(value, req));
       if (!req._completer.isCompleted) {
         req._completer.complete(ToolApprovalResult.denied('cancelled'));
+        unawaited(
+          _audit(
+            'cancelled',
+            toolName: req.toolName,
+            toolCallId: req.toolCallId,
+            conversationId: req.conversationId,
+            detail: 'conversation_cancelled',
+          ),
+        );
       }
     }
     notifyListeners();
+  }
+
+  // --------------------------------------------------------------- audit trail
+
+  /// Name of the approval trail inside the app data directory.
+  static const String auditFileName = 'approval_audit.log';
+
+  /// Cap so a long-lived install cannot grow the trail without bound.
+  static const int auditMaxBytes = 256 * 1024;
+
+  File? _auditFile;
+
+  /// Appends one approval-lifecycle event to the trail.
+  ///
+  /// Every tool that needs approval funnels through this service, so this single
+  /// hook covers MCP tools, Kelivo's own workspace tools and the ported Operit
+  /// packages without touching any of them. The trail answers the question an
+  /// audit actually asks: which tool ran, in which conversation, and who
+  /// authorised it.
+  ///
+  /// Fire-and-forget by design: a failed write must never block or fail a tool
+  /// call. Argument *values* are deliberately not recorded because they can
+  /// carry secrets (paths, tokens, command payloads).
+  Future<void> _audit(
+    String event, {
+    String? toolName,
+    String? toolCallId,
+    String? conversationId,
+    String? detail,
+  }) async {
+    try {
+      var file = _auditFile;
+      if (file == null) {
+        file = File(
+          '${(await AppDirectories.getAppDataDirectory()).path}/$auditFileName',
+        );
+        _auditFile = file;
+      }
+      if (await file.exists() && await file.length() > auditMaxBytes) {
+        await file.writeAsString('');
+      }
+      final line = <String>[
+        DateTime.now().toIso8601String(),
+        event.padRight(9),
+        'tool=${toolName ?? '-'}',
+        'call=${toolCallId ?? '-'}',
+        'conversation=${conversationId ?? '-'}',
+        if (detail != null && detail.isNotEmpty) 'detail=$detail',
+      ].join(' ');
+      await file.writeAsString('$line\n', mode: FileMode.append, flush: true);
+    } catch (_) {
+      // Diagnostics only: auditing must never break a tool call.
+    }
   }
 
   ToolApprovalRequest? _takePending({
