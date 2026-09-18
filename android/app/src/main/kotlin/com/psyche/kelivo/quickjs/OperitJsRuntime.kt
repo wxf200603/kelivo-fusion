@@ -96,6 +96,7 @@ class OperitJsRuntime(
         config = cfg
         runtime = rt
         diag("configure: usable=${cfg.isUsable} rootfs=${cfg.rootfsDir}")
+        runCatching { maybeRunSelfTest() }
         Log.i(
             TAG,
             "configure: usable=${cfg.isUsable} rootfs=${cfg.rootfsDir} " +
@@ -227,6 +228,35 @@ class OperitJsRuntime(
      */
     private fun diag(message: String) {
         runCatching { File(context.filesDir, DIAG_FILE).appendText("$message\n") }
+    }
+
+    /**
+     * One-shot end-to-end check of the whole tool chain, gated behind a marker
+     * file so an ordinary launch never spawns a shell command behind the user's
+     * back.
+     *
+     * The marker's contents are the command line to run; the result goes to the
+     * diagnostic log. This exercises every hop the model will use:
+     *
+     *     super_admin.js -> Tools proxy -> NativeInterface.__call ->
+     *     OperitHostDispatcher -> KelivoWorkspaceHost -> proot
+     *
+     * Delete-the-marker-after-use keeps it strictly one shot.
+     */
+    private fun maybeRunSelfTest() {
+        val marker = File(context.filesDir, SELFTEST_MARKER)
+        if (!marker.isFile) return
+        val command = runCatching { marker.readText().trim() }
+            .getOrNull()
+            .orEmpty()
+            .ifBlank { "echo operit-selftest" }
+        marker.delete()
+
+        val startedAt = System.currentTimeMillis()
+        val raw = runCatching {
+            callTool("super_admin", "terminal", JSONObject().put("command", command).toString())
+        }.getOrElse { "threw: ${it.message}" }
+        diag("selftest [$command] -> ${raw.take(800)} (${System.currentTimeMillis() - startedAt}ms)")
     }
 
     /**
@@ -422,6 +452,12 @@ class OperitJsRuntime(
         const val CHANNEL_NAME = "app.operit_js"
         const val ASSET_DIR = "operit_packages"
         const val DIAG_FILE = "operit_js_diag.log"
+
+        /**
+         * Presence of this file (its contents are the command line) triggers the
+         * one-shot end-to-end self test in [maybeRunSelfTest].
+         */
+        const val SELFTEST_MARKER = "operit_selftest.txt"
         const val MAX_DRAIN_ROUNDS = 64
     }
 }
