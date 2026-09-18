@@ -9,6 +9,13 @@ void main() {
       const allowed = <String>{
         'lib/core/database/business_migration_engine.dart',
         'lib/core/providers/hotkey_provider.dart',
+        // The built-in MCP server's settings are `localOnly` keys, which are not
+        // business settings and by design do not go through the routing layer:
+        // `BusinessPreferences` throws `ArgumentError` for them, so a direct write
+        // is the only route such a key has. Every other `localOnly` writer
+        // (settings_provider.dart, hotkey_provider.dart, main.dart) is already on
+        // this list; this file is a legitimate holder that was simply never added.
+        'lib/core/services/mcp/server/mcp_server_service.dart',
         'lib/core/providers/settings_provider.dart',
         'lib/desktop/window_size_manager.dart',
         'lib/features/migration/hive_to_sqlite_migration_service.dart',
