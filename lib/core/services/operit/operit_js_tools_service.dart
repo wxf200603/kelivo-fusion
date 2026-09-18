@@ -106,9 +106,11 @@ class OperitJsToolsService {
   }
 /// Executes a namespaced tool call and returns the result for the model.
   ///
-  /// These packages include terminal/root tools, so when an [approvalService]
-  /// is supplied the call goes through the same approval gate Kelivo's
-  /// workspace tools use — the user stays in control of what actually runs.
+  /// Every package reachable here exposes terminal/root tools, so a missing
+  /// approval channel **fails closed**: silently executing would hand the model
+  /// an unapproved root shell, which is precisely what the gate exists to
+  /// prevent. An unavailable [approvalService] is therefore an error, never a
+  /// bypass.
   Future<Object?> handle(
     String toolName,
     Map<String, dynamic> args, {
@@ -119,22 +121,29 @@ class OperitJsToolsService {
     final route = _routes[toolName];
     if (route == null) return _errorResult('unknown tool: $toolName');
 
+    final approvals = approvalService;
+    if (approvals == null) {
+      return _errorResult(
+        'approval_unavailable: ${route.packageName}:${route.tool} can run shell '
+        'commands, so it needs explicit user approval — but no approval service '
+        'is available in this context. Refusing to run it.',
+      );
+    }
+
     try {
-      if (approvalService != null) {
-        final id = (toolCallId ?? '').trim();
-        final decision = await approvalService.requestApproval(
-          toolCallId: id.isEmpty
-              ? '${toolName}_${DateTime.now().microsecondsSinceEpoch}'
-              : id,
-          toolName: toolName,
-          arguments: args,
-          conversationId: conversationId,
+      final id = (toolCallId ?? '').trim();
+      final decision = await approvals.requestApproval(
+        toolCallId: id.isEmpty
+            ? '${toolName}_${DateTime.now().microsecondsSinceEpoch}'
+            : id,
+        toolName: toolName,
+        arguments: args,
+        conversationId: conversationId,
+      );
+      if (!decision.approved) {
+        return _errorResult(
+          decision.denyReason ?? 'User denied the tool call',
         );
-        if (!decision.approved) {
-          return _errorResult(
-            decision.denyReason ?? 'User denied the tool call',
-          );
-        }
       }
 
       final raw = await _channel.invokeMethod<String>('callTool', {

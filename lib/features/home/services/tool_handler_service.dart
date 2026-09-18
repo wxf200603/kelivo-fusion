@@ -494,6 +494,16 @@ class ToolHandlerService {
         }
 
         if (OperitJsToolsService.instance.owns(name)) {
+          // Second, independent gate. These tools reach a root shell, so a
+          // missing approval channel must refuse outright instead of relying on
+          // the service to fail closed by itself.
+          if (approvalService == null) {
+            return _toolError(
+              error: 'approval_unavailable',
+              message: 'Refusing to run $name without an approval channel.',
+              tool: name,
+            );
+          }
           return await OperitJsToolsService.instance.handle(
             name,
             args,
