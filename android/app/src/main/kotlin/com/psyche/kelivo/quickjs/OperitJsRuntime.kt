@@ -28,6 +28,12 @@ class OperitJsRuntime(
 
     @Volatile private var runtime: QuickJsNativeRuntime? = null
     @Volatile private var config: KelivoWorkspaceHost.WorkspaceConfig? = null
+
+    /**
+     * The live host. Kept so its PTY sessions can be released when the runtime
+     * is rebuilt or torn down — a reconfigure must not leave shells running.
+     */
+    @Volatile private var workspaceHost: KelivoWorkspaceHost? = null
     private val loaded = mutableSetOf<String>()
 
     fun attach() {
@@ -75,7 +81,12 @@ class OperitJsRuntime(
 
     fun dispose() {
         channel.setMethodCallHandler(null)
-        worker.execute { runCatching { runtime?.close() }; runtime = null }
+        worker.execute {
+            runCatching { runtime?.close() }
+            runCatching { workspaceHost?.close() }
+            workspaceHost = null
+            runtime = null
+        }
         worker.shutdown()
     }
 
@@ -89,8 +100,13 @@ class OperitJsRuntime(
             defaultCwd = args["cwd"] as? String ?: "/root",
         )
         runCatching { runtime?.close() }
+        // The previous host owns the PTYs; release them before handing over.
+        runCatching { workspaceHost?.close() }
+        workspaceHost = null
         loaded.clear()
-        val (rt, _) = QuickJsHostEnvironment.create(KelivoWorkspaceHost(context, cfg))
+        val host = KelivoWorkspaceHost(context, cfg)
+        val (rt, _) = QuickJsHostEnvironment.create(host)
+        workspaceHost = host
         rt.installCompatLayerOrThrow()
         installHostBootstrap(rt, cfg)
         config = cfg
@@ -261,6 +277,13 @@ class OperitJsRuntime(
         val marker = File(context.filesDir, SELFTEST_MARKER)
         if (!marker.isFile) return
         val text = runCatching { marker.readText().trim() }.getOrNull().orEmpty()
+        marker.delete()
+
+        if (text.startsWith(PTY_PREFIX)) {
+            runPtySelfTest()
+            return
+        }
+
         // A leading `#shell` selects the Android-side tool (root/Shizuku); anything
         // else runs inside the container as a normal terminal command.
         val useShell = text.startsWith(SHELL_PREFIX)
@@ -268,13 +291,34 @@ class OperitJsRuntime(
             .trim()
             .ifBlank { "echo operit-selftest" }
         val tool = if (useShell) "shell" else "terminal"
-        marker.delete()
 
         val startedAt = System.currentTimeMillis()
         runCatching {
             callTool("super_admin", tool, JSONObject().put("command", command).toString())
         }.onFailure { diag("selftest $tool threw: ${it.message}") }
         diag("selftest $tool [$command] finished in ${System.currentTimeMillis() - startedAt}ms")
+    }
+
+    /**
+     * Exercises the interactive path, one call per step.
+     *
+     * The steps share a session: if `pwd` after `cd /tmp` still reports `/tmp`,
+     * the PTY is genuinely persistent rather than a fresh proot per command.
+     * The last step checks that phone storage is mounted.
+     */
+    private fun runPtySelfTest() {
+        val steps = listOf(
+            "cd /tmp && pwd",
+            "pwd",
+            "ls /sdcard | head -3",
+        )
+        for (step in steps) {
+            val startedAt = System.currentTimeMillis()
+            val out = runCatching {
+                callTool("super_admin", "terminal", JSONObject().put("command", step).toString())
+            }.getOrElse { "threw: ${it.message}" }
+            diag("pty [$step] -> ${out.take(600)} (${System.currentTimeMillis() - startedAt}ms)")
+        }
     }
 
     /**
@@ -481,6 +525,9 @@ class OperitJsRuntime(
 
         /** Marker prefix that switches [maybeRunSelfTest] to `super_admin:shell`. */
         const val SHELL_PREFIX = "#shell"
+
+        /** Marker prefix that runs the multi-step interactive (PTY) self test. */
+        const val PTY_PREFIX = "#pty"
         const val MAX_DRAIN_ROUNDS = 64
     }
 }
