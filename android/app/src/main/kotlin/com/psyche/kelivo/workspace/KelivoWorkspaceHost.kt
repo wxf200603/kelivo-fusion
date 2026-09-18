@@ -442,7 +442,7 @@ class KelivoWorkspaceHost(
         diag(
             "pty probe ${session.id} ran=$ran exit=$lastExit wakeBytes=${wake.length} " +
                 "rawBytes=${raw.length} " +
-                "raw=${raw.take(200).replace('\n', '|').replace('\r', "<CR>")}",
+                "raw=${raw.take(200).replace('\n', '|').replace("\r", "<CR>")}",
         )
     }
 
