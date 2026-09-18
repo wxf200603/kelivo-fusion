@@ -120,11 +120,23 @@ class KelivoWorkspaceHost(
 
     init {
         ptyEvents.addListener { event ->
-            if (event["type"] != "pty") return@addListener
             val id = event["sessionId"] as? String ?: return@addListener
-            val data = event["data"] as? ByteArray ?: return@addListener
-            ptyBuffers[id]?.append(data)
+            when (event["type"]) {
+                "pty" -> (event["data"] as? ByteArray)?.let { ptyBuffers[id]?.append(it) }
+                "ptyExit" -> diag("pty exit $id code=${event["exitCode"]}")
+            }
         }
+    }
+
+    /**
+     * Mirrors host-side events into the same diagnostic log the bridge writes.
+     *
+     * A PTY that dies silently made the first interactive attempt
+     * indistinguishable from "the command produced no output", so the open,
+     * write and exit paths all report here.
+     */
+    private fun diag(message: String) {
+        runCatching { File(context.filesDir, DIAG_FILE).appendText("host: $message\n") }
     }
 
     // ---------------------------------------------------------------- terminal
@@ -177,10 +189,12 @@ class KelivoWorkspaceHost(
                     shell = guestShellPath,
                     shellArgs = guestShellArgs,
                 )
-            } catch (_: Exception) {
+            } catch (error: Exception) {
                 ptyBuffers.remove(id)
+                diag("pty open failed: ${error.javaClass.simpleName}: ${error.message}")
                 return@synchronized null
             }
+            diag("pty open $id pid=$pid shell=$guestShellPath args=$guestShellArgs")
             PtyHandle(id, pid).also { sessions[id] = it }
         }
     }
@@ -217,6 +231,7 @@ class KelivoWorkspaceHost(
         // with CR — the byte a real terminal sends for Enter.
         val payload = "{ $trimmed ; }2>&1; echo $marker:\$?\r"
         if (!send(session, payload)) return unavailable(sessionId, "the PTY rejected the command")
+        diag("pty send $sessionId pid=${session.pid} bytes=${payload.length} offset=$startOffset")
 
         val deadline = System.currentTimeMillis() + timeout
         while (true) {
@@ -513,6 +528,9 @@ class KelivoWorkspaceHost(
 
         /** Where phone storage is mounted inside the container. */
         const val SHARED_GUEST_PATH = "/sdcard"
+
+        /** Shared with the bridge: one diagnostic log for the whole feature. */
+        const val DIAG_FILE = "operit_js_diag.log"
 
         /** A marker's status suffix: a plain integer, e.g. `0` or `-1`. */
         val STATUS_PATTERN = Regex("-?\\d+")

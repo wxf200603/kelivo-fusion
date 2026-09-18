@@ -319,6 +319,10 @@ class OperitJsRuntime(
             }.getOrElse { "threw: ${it.message}" }
             diag("pty [$step] -> ${out.take(600)} (${System.currentTimeMillis() - startedAt}ms)")
         }
+        val screen = runCatching {
+            callTool("super_admin", "terminal_getscreen", "{}")
+        }.getOrElse { "threw: ${it.message}" }
+        diag("pty screen -> ${screen.take(400)}")
     }
 
     /**
