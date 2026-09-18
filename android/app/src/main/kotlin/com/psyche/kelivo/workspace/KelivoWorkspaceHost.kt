@@ -363,7 +363,7 @@ class KelivoWorkspaceHost(
         // send both. If CR happens to be translated too, the extra empty line
         // it submits is harmless; if it is not, it stays inside the echo text,
         // which the marker parser trims.
-        val payload = "{ $trimmed ; }2>&1; echo $marker:\$?\r\n"
+        val payload = ptySubmission(trimmed, marker)
         if (!send(session, payload)) return unavailable(sessionId, "the PTY rejected the command")
         diag("pty send $sessionId pid=${session.pid} bytes=${payload.length} offset=$startOffset")
 
@@ -664,7 +664,7 @@ class KelivoWorkspaceHost(
         val bash = File(config.rootfsDir, "bin/bash")
         val shell = if (bash.isFile) "/bin/bash" else "/bin/sh"
         val shellArgs = if (bash.isFile) listOf("--noediting", "-l") else listOf("-l")
-        val payload = "$command 2>&1; echo $marker:\$?\n"
+        val payload = ptySubmission(command, marker)
 
         return try {
             synchronized(execLock) {
@@ -719,9 +719,18 @@ class KelivoWorkspaceHost(
     }
 
     /**
-     * Waits until [needle] has been seen twice (the PTY echo, plus what the
-     * command itself printed) or the budget runs out; returns what was captured.
+     * The submission form proven to execute through a PTY.
+     *
+     * The brace-group form (`{ cmd ; }2>&1`) is what never ran: bash parses `}2`
+     * as a literal word, so the group stays unclosed and the shell waits on a
+     * continuation line that `PS2=""` never displays - which is exactly the
+     * "echoes but never executes" report. Both the candidate sweep and the
+     * fresh-session runner executed the plain form below, so every PTY path now
+     * builds its payload here.
      */
+    private fun ptySubmission(command: String, marker: String): String =
+        "$command2>&1; echo $marker:\$?\n"
+
     private fun awaitMarker(buffer: PtyBuffer, start: Int, timeoutMs: Long): String {
         val deadline = System.currentTimeMillis() + timeoutMs
         var raw = ""
