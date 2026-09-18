@@ -34,6 +34,7 @@ jobs:
         run: flutter pub get
 
       - name: Dart format (changed files only)
+        id: dart-format
         shell: bash
         run: |
           set -euo pipefail
@@ -54,6 +55,45 @@ jobs:
           echo "Format-checking files:"
           echo "$files"
           dart format --output=none --set-exit-if-changed $files
+
+      - name: Stage the files dart format wants to change
+        # Same hand-off as the l10n step below, for the same reason: this
+        # proot has no Flutter, so the formatter's output can only be
+        # produced on the runner. The staged copy keeps the repository's
+        # directories, so it can be copied straight back in.
+        if: steps.dart-format.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
+          files="$(git diff --diff-filter=ACMR --name-only "$BASE_SHA" "$HEAD_SHA" -- | grep -E '^(lib|test|integration_test)/.*\.dart$' || true)"
+          if [ -z "$files" ]; then
+            echo 'Nothing to hand over.'
+            exit 0
+          fi
+          staged=dart-format-recovery
+          rm -rf "$staged"
+          for f in $files; do
+            mkdir -p "$staged/$(dirname "$f")"
+            cp "$f" "$staged/$f"
+          done
+          dart format "$staged"
+
+      - name: Upload the files dart format wants to change
+        # failure-only in effect: the format step's outcome is only
+        # 'failure' when the check above failed, and an always-on upload
+        # would leave a stale artifact behind.
+        if: steps.dart-format.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dart-format-recovery
+          path: dart-format-recovery
 
       - name: Generate l10n and ensure committed outputs
         run: |
