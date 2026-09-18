@@ -26,15 +26,21 @@ that are not accidents:
   * The stage directory is `dart-format-recovery`, not `.dart-format-recovery`:
     upload-artifact@v4 skips hidden files by default and everything under a
     dot-directory counts as hidden, so a dotted stage would upload nothing.
-  * Both recovery steps are keyed to the format step's own outcome rather than
-    to `failure()`, so a red `flutter test` cannot hand over a formatting
-    artifact that looks like the reason the run is red.
+  * Both recovery steps are keyed to the format step's own outcome *as well as*
+    to `failure()`. The status function is not optional and its absence is not
+    cosmetic: a step-level `if` without one is ANDed with an implicit
+    `success()`, so the first version of this condition could never be true. The
+    note above OLD_GATED carries the run that demonstrated it. The `steps.` half
+    keeps the hand-off narrower than the l10n step's plain `failure()`, so a red
+    `flutter test` cannot hand over a formatting artifact that looks like the
+    reason the run is red.
 
 Self-checks:
 
   1. The format check itself is untouched — still `--set-exit-if-changed` over
      the changed files, so this stays a gate rather than a way past one.
-  2. Exactly one stage step and one upload step, both gated on the format step.
+  2. Exactly one stage step and one upload step, and neither is gated without a
+     status function.
   3. The stage keeps repository paths, and is not hidden.
   4. The document still parses, the format step kept its id, and the recovery
      sits between the format check and the l10n check.
@@ -54,7 +60,21 @@ FORMAT_STEP_WITH_ID = (
     "        shell: bash\n"
 )
 
-GATED = "        if: steps.dart-format.outcome == 'failure'\n"
+# A step-level `if` that names no status function is ANDed with an implicit
+# `success()`, so `steps.dart-format.outcome == 'failure'` on its own can never
+# be true: the only run in which it would matter is one where a step failed.
+# This script shipped that condition first, and the job said so out loud --
+# `Dart format (changed files only): completed/failure` with both steps below it
+# `completed/skipped`, next to the l10n step's plain `failure()` succeeding.
+# Naming a status function is what turns the implicit check off; `failure()` is
+# also the truthful half of the intent, and the `steps.` half is what keeps this
+# narrower than the l10n step's upload.
+OLD_GATED = "        if: steps.dart-format.outcome == 'failure'\n"
+# Kept apart from `GATED` so the parsed-document check below can compare the
+# YAML *value* rather than a slice of the line: stripping the leading whitespace
+# off `GATED` leaves the `if: ` key in place, and no parsed value ever has it.
+GATE_CONDITION = "failure() && steps.dart-format.outcome == 'failure'"
+GATED = f"        if: {GATE_CONDITION}\n"
 
 STAGE_STEP = "Stage the files dart format wants to change"
 UPLOAD_STEP = "Upload the files dart format wants to change"
@@ -118,6 +138,17 @@ check(WORKFLOW.is_file(), f"missing {WORKFLOW.relative_to(ROOT)}")
 text = WORKFLOW.read_text(encoding="utf-8") if WORKFLOW.is_file() else ""
 original = text
 
+# The condition the first version of this carried can never be true, for the
+# reason noted above OLD_GATED. It is migrated here rather than in a second
+# script because the idempotent marker below is already in the file, so anything
+# guarded by it would be skipped rather than repaired.
+if OLD_GATED in text:
+    count = text.count(OLD_GATED)
+    check(count == 2, f"old gate condition matched {count} times (expected exactly 2)")
+    if count == 2:
+        text = text.replace(OLD_GATED, GATED)
+        print("  gate condition: made status-aware")
+
 # The format check needs a name of its own, so the recovery can key off it
 # instead of off "some step in the job failed".
 if "id: dart-format" in text:
@@ -155,9 +186,10 @@ for step in (
 ):
     check(step in text, f"the gate lost a step: {step}")
 
-# 2. One stage step, one upload step, both keyed to the format step.
+# 2. One stage step, one upload step, neither keyed without a status function.
 check(text.count(f"name: {STAGE_STEP}") == 1, "expected exactly one stage step")
 check(text.count("name: dart-format-recovery") == 1, "expected exactly one upload step")
+check(text.count(OLD_GATED) == 0, "a step is still gated without a status function")
 check(
     text.count(GATED) == 2,
     f"both recovery steps must be gated on the format step (found {text.count(GATED)})",
@@ -195,7 +227,7 @@ if isinstance(document, dict):
             "the format step lost its id",
         )
         check(
-            steps[position[STAGE_STEP]].get("if") == "steps.dart-format.outcome == 'failure'",
+            steps[position[STAGE_STEP]].get("if") == GATE_CONDITION,
             "the stage step is not keyed to the format step",
         )
         check(

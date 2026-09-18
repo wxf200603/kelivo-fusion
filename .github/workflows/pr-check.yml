@@ -61,7 +61,7 @@ jobs:
         # proot has no Flutter, so the formatter's output can only be
         # produced on the runner. The staged copy keeps the repository's
         # directories, so it can be copied straight back in.
-        if: steps.dart-format.outcome == 'failure'
+        if: failure() && steps.dart-format.outcome == 'failure'
         shell: bash
         run: |
           set -euo pipefail
@@ -89,7 +89,7 @@ jobs:
         # failure-only in effect: the format step's outcome is only
         # 'failure' when the check above failed, and an always-on upload
         # would leave a stale artifact behind.
-        if: steps.dart-format.outcome == 'failure'
+        if: failure() && steps.dart-format.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: dart-format-recovery
