@@ -56,10 +56,13 @@ flutter test test/perf/timeline_scroll_bench.dart
 
 Several packages live under `dependencies/` and are referenced by path in `pubspec.yaml` (e.g. `gpt_markdown`, `mcp_client`, `flutter_tts`, `flutter_math_fork`, `downsize`). The analyzer excludes `dependencies/flutter_math_fork/**` and `dependencies/flutter_tts/**`.
 
+`lib/secrets/fallback.dart` is gitignored, so a fresh clone does not compile: two files import it unconditionally. Run `tool/setup_local_secrets.sh` after cloning to copy the committed stub (`tool/stubs/fallback.dart`, empty key) into place; overwrite it with your own key if you need the fallback to fire.
+
 ## Useful commands
 
 ```bash
 flutter pub get                             # install dependencies
 flutter gen-l10n                            # regenerate l10n files
 dart run build_runner build                 # regenerate Drift code
+tool/setup_local_secrets.sh                 # create lib/secrets/fallback.dart
 ```

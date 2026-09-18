@@ -94,6 +94,12 @@ jobs:
             "$BASE_DIR/desiredFileName.txt" \
             "desiredFileName.txt"
 
+      - name: Create the gitignored local secrets file
+        # lib/secrets/ is gitignored, so a fresh checkout cannot compile until
+        # the committed stub is copied into place -- the same command a
+        # developer runs after cloning.
+        run: tool/setup_local_secrets.sh
+
       - name: dart analyze (root package only)
         run: dart analyze --fatal-infos lib test integration_test
 
