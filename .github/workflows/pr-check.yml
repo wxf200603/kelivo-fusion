@@ -6,6 +6,11 @@ env:
 on:
   pull_request:
     branches: [master]
+  # Pushed straight to master, this repository never opened a pull request,
+  # so analyze/test/format never ran at all. Same workflow, second trigger:
+  # a separate file would duplicate the toolchain setup and drift from it.
+  push:
+    branches: [master]
 
 jobs:
   checks:
