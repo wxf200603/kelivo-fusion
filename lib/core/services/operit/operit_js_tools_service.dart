@@ -111,6 +111,10 @@ class OperitJsToolsService {
   /// an unapproved root shell, which is precisely what the gate exists to
   /// prevent. An unavailable [approvalService] is therefore an error, never a
   /// bypass.
+  ///
+  /// The native runtime can also re-attach underneath us, which drops the
+  /// workspace it was pointed at; that refusal is answered by re-configuring
+  /// and retrying once, so a conversation survives a model switch.
   Future<Object?> handle(
     String toolName,
     Map<String, dynamic> args, {
@@ -146,23 +150,47 @@ class OperitJsToolsService {
         );
       }
 
-      final raw = await _channel.invokeMethod<String>('callTool', {
-        'pkg': route.packageName,
-        'tool': route.tool,
-        'argsJson': jsonEncode(args),
-      });
+      var raw = await _callTool(route.packageName, route.tool, args);
+
+      // A runtime that re-attached since the last [warmUp] has dropped the
+      // workspace, so it answers every call with "runtime not configured"
+      // until the app restarts. Re-configuring costs one round trip and keeps
+      // the tools alive; [warmUp] also refreshes the schemas and routes, which
+      // the new runtime may serve differently.
+      if (_notConfigured(raw)) {
+        await _mark('callTool: runtime not configured, re-configuring');
+        await warmUp();
+        raw = await _callTool(route.packageName, route.tool, args);
+      }
       if (raw == null || raw.isEmpty) return _errorResult('empty result');
 
       // The native side returns the tool's JSON result verbatim; pass it
       // through unchanged so the model sees the same shape Operit produces.
-      final decoded = jsonDecode(raw);
-      return decoded;
+      return jsonDecode(raw);
     } catch (error) {
       return _errorResult('$error');
     }
   }
 
   // --------------------------------------------------------------- internals
+
+  /// One native tool call, with the request shape kept in a single place.
+  Future<String?> _callTool(
+    String pkg,
+    String tool,
+    Map<String, dynamic> args,
+  ) =>
+      _channel.invokeMethod<String>('callTool', {
+        'pkg': pkg,
+        'tool': tool,
+        'argsJson': jsonEncode(args),
+      });
+
+  /// True when the bridge refused to run the tool because its runtime has no
+  /// workspace: the native side emits this before executing anything, so the
+  /// caller may safely [warmUp] and try again.
+  static bool _notConfigured(String? raw) =>
+      raw != null && raw.contains('runtime not configured');
 
   /// Mirrors progress into the native diagnostic log (`operit_js_diag.log`
   /// in the app's private files dir).
