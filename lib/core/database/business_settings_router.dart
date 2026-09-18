@@ -28,6 +28,14 @@ final class BusinessKeyRegistry {
     'desktop_hotkeys_enabled_v1',
     'display_chat_font_scale_v1',
     'flutter_log_enabled_v1',
+    // The built-in MCP server belongs to this device, so its settings
+    // are local-only: the token is a credential and must not travel in a
+    // business snapshot, and a listening port only means something on
+    // the machine doing the listening.
+    'mcp_server_enabled',
+    'mcp_server_allow_lan',
+    'mcp_server_port',
+    'mcp_server_token',
   };
 
   static const discardedKeys = <String>{
