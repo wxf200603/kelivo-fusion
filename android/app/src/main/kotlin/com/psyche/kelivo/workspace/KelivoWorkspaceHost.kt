@@ -155,7 +155,10 @@ class KelivoWorkspaceHost(
                     tmpDir = config.tmpDir,
                     binds = effectiveBinds(),
                     cwd = ProotCommand.validateGuestCwd(config.defaultCwd),
-                    env = emptyMap(),
+                    // Keep the captured stream to the command's own output: an
+                    // interactive prompt would otherwise be prepended to every
+                    // result the model sees.
+                    env = mapOf("PS1" to "", "PS2" to ""),
                     cols = SCREEN_COLS,
                     rows = SCREEN_ROWS,
                 )
@@ -226,14 +229,27 @@ class KelivoWorkspaceHost(
     /** A finished command: its output, and the status the marker carried. */
     private data class MarkerResult(val body: String, val exitCode: Int)
 
+    /**
+     * Finds the line the shell printed for `echo <marker>:$?`.
+     *
+     * The PTY echoes our payload back, so the marker text also appears *inside*
+     * the echoed command line. Only a line that begins with the marker and is
+     * followed by a plain integer is the shell's own output — the echo line
+     * starts with `{` and ends with the literal `$?`, so it can never match.
+     */
     private fun parseMarker(seen: String, marker: String): MarkerResult? {
-        val at = seen.lastIndexOf(marker)
-        if (at < 0) return null
-        val eol = seen.indexOf('\n', at)
-        // The status line has not fully arrived yet; keep polling.
-        if (eol < 0) return null
-        val status = seen.substring(at + marker.length + 1, eol).trim()
-        return MarkerResult(seen.substring(0, at), status.toIntOrNull() ?: -1)
+        var offset = 0
+        for (line in seen.split('\n')) {
+            val trimmed = line.trimEnd('\r')
+            if (trimmed.startsWith(marker)) {
+                val status = trimmed.substring(marker.length).removePrefix(":").trim()
+                if (STATUS_PATTERN.matches(status)) {
+                    return MarkerResult(seen.substring(0, offset), status.toInt())
+                }
+            }
+            offset += line.length + 1
+        }
+        return null
     }
 
     /**
@@ -479,5 +495,8 @@ class KelivoWorkspaceHost(
 
         /** Where phone storage is mounted inside the container. */
         const val SHARED_GUEST_PATH = "/sdcard"
+
+        /** A marker's status suffix: a plain integer, e.g. `0` or `-1`. */
+        val STATUS_PATTERN = Regex("-?\\d+")
     }
 }
