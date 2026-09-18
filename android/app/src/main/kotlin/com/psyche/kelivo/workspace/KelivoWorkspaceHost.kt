@@ -227,9 +227,14 @@ class KelivoWorkspaceHost(
         val marker = "__KELIVO_END_${markerSeq.incrementAndGet()}__"
 
         // `2>&1` folds stderr into the stream the model reads, and the trailing
-        // echo carries the exit status back out through the PTY. The line ends
-        // with CR — the byte a real terminal sends for Enter.
-        val payload = "{ $trimmed ; }2>&1; echo $marker:\$?\r"
+        // echo carries the exit status back out through the PTY.
+        //
+        // Submitted as CRLF on purpose. In canonical mode the line discipline
+        // only ends a line on NL, while a terminal's Enter key sends CR — so
+        // send both. If CR happens to be translated too, the extra empty line
+        // it submits is harmless; if it is not, it stays inside the echo text,
+        // which the marker parser trims.
+        val payload = "{ $trimmed ; }2>&1; echo $marker:\$?\r\n"
         if (!send(session, payload)) return unavailable(sessionId, "the PTY rejected the command")
         diag("pty send $sessionId pid=${session.pid} bytes=${payload.length} offset=$startOffset")
 
