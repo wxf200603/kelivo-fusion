@@ -74,6 +74,9 @@ class McpServerEngine {
   final String serverVersion;
 
   final Map<String, McpServerTool> _tools;
+
+  /// Where this engine's log lines go. The service points it at the same
+  /// `operit_js_diag.log` as the rest of the fusion; null keeps it quiet.
   final void Function(String message)? diag;
 
   bool _closed = false;

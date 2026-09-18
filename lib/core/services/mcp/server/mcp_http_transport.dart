@@ -43,6 +43,8 @@ class McpHttpTransport {
   /// Port to bind; 0 asks the OS for a free one.
   final int port;
 
+  /// Where this transport's log lines go. The service points it at the same
+  /// `operit_js_diag.log` as the rest of the fusion; null keeps it quiet.
   final void Function(String message)? diag;
 
   HttpServer? _server;

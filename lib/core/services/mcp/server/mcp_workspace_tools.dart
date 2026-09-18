@@ -15,6 +15,8 @@ import 'mcp_server_engine.dart';
 class McpWorkspaceTools {
   McpWorkspaceTools({this.diag});
 
+  /// Where these tools' log lines go. The service points it at the same
+  /// `operit_js_diag.log` as the rest of the fusion; null keeps them quiet.
   final void Function(String message)? diag;
 
   /// The bridge channel shared with the Operit runtime.
