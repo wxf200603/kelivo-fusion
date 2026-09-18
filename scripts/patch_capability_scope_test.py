@@ -33,6 +33,14 @@ removed, has to come out token-for-token identical, and check 5 below is what sa
 so — "updateAssistant still appears once" would not, because (A) edits the very
 file it would be counting in.
 
+One more thing this run taught, recorded here rather than in a comment nobody
+reads again: the applied state does not look like this script's replacement text.
+`dart format` re-lays-out what the script writes — the `testWidgets` call below
+came back split one argument per line — so "already applied" is decided on a
+phrase that survives formatting, one per change, rather than on the exact lines.
+Deciding on the lines made the script fail on the committed tree, which is the
+only tree a fresh clone ever has.
+
 Self-checks:
 
   1. Every anchor matched exactly once; the four strings that carried the removed
@@ -87,19 +95,47 @@ NEW_HEADER = (
     "/// They now stay configured and go unused until a tool-capable model is selected.\n"
 )
 
-OLD_NAME = "  testWidgets('the assistant\\'s own model still disables what it cannot do', ("
-NEW_NAME = "  testWidgets('a model that cannot call tools keeps the MCP servers configured', ("
-
-OLD_ASSERT = "    expect(assistants.currentAssistant?.mcpServerIds, isEmpty);"
-NEW_ASSERT = (
-    "    expect(\n"
-    "      assistants.currentAssistant?.mcpServerIds,\n"
-    "      const ['server-1'],\n"
-    "      reason:\n"
-    "          'not marking a model tool-capable is not a reason to delete a '\n"
-    "          'configuration nobody asked to change; the servers stay configured '\n"
-    "          'and go unused until a tool-capable model is selected',\n"
-    "    );"
+OLD_TEST = (
+    "  testWidgets('the assistant\\'s own model still disables what it cannot do', (\n"
+    "    tester,\n"
+    "  ) async {\n"
+    "    final assistants = await loadAssistantWithMcp(tester);\n"
+    "\n"
+    "    await pumpComposer(\n"
+    "      tester,\n"
+    "      assistants: assistants,\n"
+    "      isConversationOverride: false,\n"
+    "    );\n"
+    "\n"
+    "    expect(assistants.currentAssistant?.mcpServerIds, isEmpty);\n"
+    "  });\n"
+)
+# The layout `dart format` produced for this block, not the layout that was first
+# written here by hand. The two differ, and the difference had to be applied as a
+# separate style commit; carrying the formatter's layout means a replay of this
+# script lands on the committed state directly.
+NEW_TEST = (
+    "  testWidgets(\n"
+    "    'a model that cannot call tools keeps the MCP servers configured',\n"
+    "    (tester) async {\n"
+    "      final assistants = await loadAssistantWithMcp(tester);\n"
+    "\n"
+    "      await pumpComposer(\n"
+    "        tester,\n"
+    "        assistants: assistants,\n"
+    "        isConversationOverride: false,\n"
+    "      );\n"
+    "\n"
+    "      expect(\n"
+    "        assistants.currentAssistant?.mcpServerIds,\n"
+    "        const ['server-1'],\n"
+    "        reason:\n"
+    "            'not marking a model tool-capable is not a reason to delete a '\n"
+    "            'configuration nobody asked to change; the servers stay configured '\n"
+    "            'and go unused until a tool-capable model is selected',\n"
+    "      );\n"
+    "    },\n"
+    "  );\n"
 )
 
 GUARD = "    if (!chatModelIsConversationOverride) {"
@@ -137,14 +173,36 @@ test_before = TEST.read_text(encoding="utf-8")
 widget = widget_before
 test = test_before
 
-for label, old, new, target in (
-    ("call-site comment", OLD_CALL_SITE, NEW_CALL_SITE, "widget"),
-    ("test header", OLD_HEADER, NEW_HEADER, "test"),
-    ("test name", OLD_NAME, NEW_NAME, "test"),
-    ("assertion", OLD_ASSERT, NEW_ASSERT, "test"),
+# `marker` is what decides "already applied", and it is deliberately a phrase that
+# survives formatting rather than the replacement text itself. The formatter
+# re-lays-out what this script writes, so on the committed tree -- the only tree a
+# fresh clone has -- the applied state does not look like `new`. Deciding on the
+# exact lines made this script fail there, which is what its own re-run caught.
+for label, old, new, marker, target in (
+    (
+        "call-site comment",
+        OLD_CALL_SITE,
+        NEW_CALL_SITE,
+        "The MCP servers used to be cleared here as well",
+        "widget",
+    ),
+    (
+        "test header",
+        OLD_HEADER,
+        NEW_HEADER,
+        "makes exactly one write to the ASSISTANT",
+        "test",
+    ),
+    (
+        "second test",
+        OLD_TEST,
+        NEW_TEST,
+        "not marking a model tool-capable",
+        "test",
+    ),
 ):
     haystack = widget if target == "widget" else test
-    if new in haystack:
+    if marker in haystack:
         print(f"  {label}: already applied")
         continue
     count = haystack.count(old)
