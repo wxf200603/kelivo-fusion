@@ -16,7 +16,10 @@ import org.robolectric.annotation.Config
  * the block copied out of `assets/operit_packages/<name>.js` by
  * `scripts/patch_metadata_hjson_test.py` -- the same expression the parser uses --
  * rather than retyped, because quoting is what makes the block HJSON and a fixture
- * typed by hand could stop being HJSON while the test stayed green.
+ * typed by hand could stop being HJSON while the test stayed green. Each fixture is
+ * the whole `/* METADATA ... */` block rather than the inside of one, because the
+ * marker is what `parseMetadata` searches the source for: without it, all six come
+ * back null.
  *
  * If the parse ever goes back to `JSONObject(text)` alone, all six fail: none of
  * these blocks is JSON. That is the regression this exists to catch, and it is why
@@ -49,6 +52,7 @@ class OperitJsRuntimeMetadataTest {
 
     private companion object {
         val AUTOMATIC_UI_SUBAGENT = """
+/* METADATA
 {
     name: "Automatic_ui_subagent"
 
@@ -559,10 +563,11 @@ When the user asks you to complete a UI task (e.g. open an app, search content, 
             ]
         }
     ]
- }
+ }*/
 """
 
         val CODE_RUNNER = """
+/* METADATA
 {
   name: code_runner
   display_name: {
@@ -901,10 +906,11 @@ When the user asks you to complete a UI task (e.g. open an app, search content, 
       ]
     }
   ]
-}
+}*/
 """
 
         val OPERIT_EDITOR = """
+/* METADATA
 {
   name: "operit_editor"
   display_name: {
@@ -3278,10 +3284,11 @@ When the user asks you to complete a UI task (e.g. open an app, search content, 
       ]
     }
   ]
-}
+}*/
 """
 
         val TIME = """
+/* METADATA
 {
   name: time
 
@@ -3313,10 +3320,11 @@ When the user asks you to complete a UI task (e.g. open an app, search content, 
       parameters: []
     }
   ]
-}
+}*/
 """
 
         val VARIOUS_SEARCH = """
+/* METADATA
 {
   name: various_search
 
@@ -3564,10 +3572,11 @@ When the user asks you to complete a UI task (e.g. open an app, search content, 
       ]
     }
   ]
-}
+}*/
 """
 
         val WORKFLOW = """
+/* METADATA
 {
   name: "workflow"
 
@@ -3947,7 +3956,7 @@ Notes:
       ]
     }
   ]
-}
+}*/
 """
     }
 

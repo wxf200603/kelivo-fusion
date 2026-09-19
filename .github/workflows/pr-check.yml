@@ -188,6 +188,15 @@ jobs:
           echo '--- unit tests ---'
           if [ -x android/gradlew ]; then
             (cd android && ./gradlew :app:testDebugUnitTest --no-daemon 2>&1 | tail -40)
+            # `tail -40` can cut the assertion messages off, and those are what say
+            # why a run is red. They are read back from the report the task leaves
+            # behind. Both roots are tried: the Flutter plugin re-roots the build
+            # directory at the repository, the plain Android layout does not.
+            for report in build/app/test-results/testDebugUnitTest/*.xml \
+                          android/app/build/test-results/testDebugUnitTest/*.xml; do
+              [ -f "$report" ] || continue
+              grep -h -m1 -A3 '<failure' "$report" | sed 's/^/    /'
+            done
           else
             echo 'no wrapper appeared: the invocation is still unknown'
           fi

@@ -11,11 +11,15 @@ here (`MainActivity.kt:521,533,543`, `OAuthHandler.kt:64`,
 the function under test is the one production calls.
 
 The fixture is the six packages' METADATA blocks **as they are in the assets**,
-extracted here with the same expression the parser uses, not retyped. That is the
-point of the test: quoting is what makes these blocks HJSON, so a fixture written
-by hand could quietly stop being HJSON and the test would keep passing. Each of
-the six is named in its own test method, so a regression has to break six
-assertions with names in them rather than one count.
+extracted here with the same expression the parser uses, not retyped -- and it is
+the *whole* block, `/* METADATA` marker included, because that is what
+`parseMetadata` is handed. The first CI run of this test proved the difference:
+fixtures holding only the inside of the block (the capture group) came back null
+from `parseMetadata` and failed all six assertions. That is the point of the
+test: quoting is what makes these blocks HJSON, so a fixture written by hand
+could quietly stop being HJSON and the test would keep passing. Each of the six
+is named in its own test method, so a regression has to break six assertions
+with names in them rather than one count.
 
 The CI half. `android/gradlew`, `gradlew.bat` and `gradle-wrapper.jar` are all
 excluded by `android/.gitignore:1,4,5`, and the PR-checks job has never had a JDK
@@ -34,7 +38,8 @@ Self-checks:
      feeds each block to `json.loads` and fails if it parses, because a block
      `org.json` would accept proves nothing about the HJSON path. It also
      refuses a quoted `"name"` key, which the parser's expression relies on
-     being bare.
+     being bare -- and it refuses a fixture the parser's own expression does not
+     match, which is the one thing that makes `parseMetadata` return null.
   3. The generated test names all six packages in its method names and asserts
      `name` against the value that package's own block declares, rather than
      against the file name -- automatic_ui_subagent declares
@@ -106,6 +111,15 @@ PROBE = (
     "          echo '--- unit tests ---'\n"
     "          if [ -x android/gradlew ]; then\n"
     "            (cd android && ./gradlew :app:testDebugUnitTest --no-daemon 2>&1 | tail -40)\n"
+    "            # `tail -40` can cut the assertion messages off, and those are what say\n"
+    "            # why a run is red. They are read back from the report the task leaves\n"
+    "            # behind. Both roots are tried: the Flutter plugin re-roots the build\n"
+    "            # directory at the repository, the plain Android layout does not.\n"
+    "            for report in build/app/test-results/testDebugUnitTest/*.xml \\\n"
+    "                          android/app/build/test-results/testDebugUnitTest/*.xml; do\n"
+    "              [ -f \"$report\" ] || continue\n"
+    "              grep -h -m1 -A3 '<failure' \"$report\" | sed 's/^/    /'\n"
+    "            done\n"
     "          else\n"
     "            echo 'no wrapper appeared: the invocation is still unknown'\n"
     "          fi\n"
@@ -162,8 +176,17 @@ for name in PACKAGES:
     check(match is not None, f"{name}: no METADATA block in the asset")
     if match is None:
         continue
-    block = match.group(1).strip()
+    block = match.group(0).strip()
     blocks[name] = block
+    # The fixture has to be the whole block, marker included: `parseMetadata` is
+    # handed JavaScript source and looks for `/* METADATA` itself. Feeding it only
+    # the inside (group 1) returns null, which is exactly what the first CI run of
+    # this test reported -- six AssertionErrors on the `assertNotNull`.
+    check(
+        METADATA_PATTERN.search(block) is not None,
+        f"{name}: the fixture does not match the parser's own expression, so "
+        "parseMetadata would return null for it",
+    )
     # What the test guards is "org.json alone drops this block", so that is what is
     # checked -- not a proxy like "the name's value carries no quotes". Three of the
     # six quote it (`name: "workflow"`) and are still not JSON, because their keys
@@ -247,7 +270,10 @@ if blocks:
         " * the block copied out of `assets/operit_packages/<name>.js` by\n"
         " * `scripts/patch_metadata_hjson_test.py` -- the same expression the parser uses --\n"
         " * rather than retyped, because quoting is what makes the block HJSON and a fixture\n"
-        " * typed by hand could stop being HJSON while the test stayed green.\n"
+        " * typed by hand could stop being HJSON while the test stayed green. Each fixture is\n"
+        " * the whole `/* METADATA ... */` block rather than the inside of one, because the\n"
+        " * marker is what `parseMetadata` searches the source for: without it, all six come\n"
+        " * back null.\n"
         " *\n"
         " * If the parse ever goes back to `JSONObject(text)` alone, all six fail: none of\n"
         " * these blocks is JSON. That is the regression this exists to catch, and it is why\n"
@@ -359,6 +385,9 @@ for step in (
 check("continue-on-error: true" in workflow, "the probe is not allowed to fail")
 check("ls -l android/gradlew" in workflow, "the probe does not ask about the wrapper")
 check(":app:testDebugUnitTest" in workflow, "the probe does not attempt the test task")
+# A failing test task must come back with its assertion message, or the probe
+# reports "6 failed" without the one thing that explains it.
+check("<failure" in workflow, "the probe does not read a failure message back")
 check("There are no Kotlin\n" not in gate, "the stale claim is still there")
 
 if failures:
