@@ -58,4 +58,17 @@ interface KelivoHost {
 
     /** Checks whether a file or directory exists at [path]. */
     fun fileExists(path: String, environment: String?): JSONObject
+
+    /**
+     * Deletes [path], throwing when it cannot be done.
+     *
+     * Throwing is deliberate and specific to this call: the packages invoke
+     * `Tools.Files.deleteFile` inside try/catch (`openai_draw.js:207`) and
+     * treat a failure as an exception, and the native layer turns a Kotlin
+     * exception into `JS_ThrowInternalError` (`quickjs_jni.cpp:621`).
+     *
+     * missing target -> ENOENT; directory with [recursive] = false -> EISDIR;
+     * a `delete()` that returns false -> EIO.
+     */
+    fun fileDelete(path: String, recursive: Boolean)
 }

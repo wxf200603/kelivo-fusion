@@ -9,6 +9,8 @@ import com.psyche.kelivo.shell.readCapped
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -898,6 +900,37 @@ class KelivoWorkspaceHost(
 
     override fun fileExists(path: String, environment: String?): JSONObject =
         JSONObject().apply { put("exists", File(path).exists()) }
+
+    override fun fileDelete(path: String, recursive: Boolean) {
+        val target = File(path)
+        // Both checks run before any delete(). File.delete() returns true for an
+        // empty directory, so deleting first would remove it silently; and it
+        // returns false for a missing target as well as for a non-empty one.
+        if (!target.exists()) {
+            throw FileNotFoundException("ENOENT: no such file or directory: $path")
+        }
+        if (target.isDirectory && !recursive) {
+            throw IOException("EISDIR: is a directory (recursive=false): $path")
+        }
+        deleteTree(target)
+    }
+
+    /**
+     * Depth-first delete. Every delete() is checked, so a partially removed
+     * tree is never reported as success.
+     */
+    private fun deleteTree(target: File) {
+        if (target.isDirectory) {
+            val children = target.listFiles()
+                ?: throw IOException("EIO: cannot list directory: ${target.path}")
+            for (child in children) {
+                deleteTree(child)
+            }
+        }
+        if (!target.delete()) {
+            throw IOException("EIO: failed to delete: ${target.path}")
+        }
+    }
 
     // ----------------------------------------------------------------- storage
 

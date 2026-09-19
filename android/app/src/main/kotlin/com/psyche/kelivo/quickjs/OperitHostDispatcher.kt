@@ -97,11 +97,38 @@ class OperitHostDispatcher(
                     ).toString()
                 }
 
+                "Tools.Files.deleteFile" -> {
+                    // args[2] (environment) intentionally not read: the signature has it, but the
+                    // current dispatcher serves a single host and KelivoHost.fileDelete() takes no
+                    // environment. Reading or validating here would be pretending we route on it.
+                    // When a second host (proot/linux) lands, add the routing here — and only
+                    // after the full enum is recovered from the native/proot side, not from the
+                    // descriptive android/linux text in package METADATA.
+                    host.fileDelete(
+                        args?.optString(0).orEmpty(),
+                        args?.optBoolean(1) ?: false,
+                    )
+                    null
+                }
+
                 else -> fallback?.invoke(method, argsJson) ?: notSupported(method)
             }
         } catch (t: Throwable) {
+            // Declared in THROWING_METHODS; every other method keeps returning an object.
+            if (method in THROWING_METHODS) throw t
             errorJson(method, t)
         }
+    }
+
+    private companion object {
+        /**
+         * Methods that surface a failure as a JS throw instead of an error object.
+         *
+         * Files.deleteFile is the first: the packages call it inside try/catch
+         * (openai_draw.js:207) and expect the throw, and the native layer converts a
+         * Kotlin exception into `JS_ThrowInternalError` (quickjs_jni.cpp:621).
+         */
+        val THROWING_METHODS = setOf("Tools.Files.deleteFile")
     }
 
     private fun notSupported(method: String): String = JSONObject()
