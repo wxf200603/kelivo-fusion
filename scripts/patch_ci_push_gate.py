@@ -4,7 +4,7 @@
 `.github/workflows/pr-check.yml` contains `dart format`, `dart analyze
 --fatal-infos` and `flutter test`, and its format step already handles the
 non-pull-request case (`github.event.before`). What it lacks is a trigger: it is
-`pull_request` only, so the three commits pushed straight to master
+`pull_request` only, so the three commits pushed straight to main
 (633692f, fa40a15, 26b2e68, 18b7d1a) were never analysed or tested — the green
 runs were `build-merged-apk`, which proves the APK compiles and nothing else.
 
@@ -93,6 +93,19 @@ KOTLIN_STEP = (
     "            *android/*) ;;\n"
     "            *)\n"
     "              echo \"no android/ path changed in $BASE_SHA..$HEAD_SHA: skipping the Kotlin unit tests\"\n"
+    "              # The skip is the half that can be wrong in silence: on a new branch\n"
+    "              # `github.event.before` is all zeros, the diff comes back empty, and\n"
+    "              # every run is green with one line saying it skipped. So the skip\n"
+    "              # says what it received, and whether the base it diffed against was\n"
+    "              # a commit at all -- a skip that should have run is then visible in\n"
+    "              # the log rather than inferred from a step that passed. This echo is\n"
+    "              # also the marker the patch script keys on: a workflow still carrying\n"
+    "              # the silent version is rewritten, not recognised as done.\n"
+    "              echo \"changed paths: $(printf '%s\\n' \"$changed\" | grep -c . || true)\"\n"
+    "              printf '%s\\n' \"$changed\" | grep . | head -5 | sed 's/^/    /' || true\n"
+    "              if ! git rev-parse --verify --quiet \"${BASE_SHA}^{commit}\" >/dev/null 2>&1; then\n"
+    "                echo \"base '${BASE_SHA}' is not a commit in this checkout: the diff is empty for that reason, and not because nothing changed\"\n"
+    "              fi\n"
     "              exit 0\n"
     "              ;;\n"
     "          esac\n"
@@ -165,8 +178,34 @@ else:
 
 # The Kotlin gate goes in after `flutter test`, which keeps the file's order: the
 # Dart checks are cheap and run first, the Kotlin one is the seven-minute one.
-if "      - name: Android unit tests (Kotlin)\n" in text:
+#
+# "Already present" is keyed on the skip diagnostic inside the step, not on the
+# step's name. The name was enough while the only thing asked of the step was that
+# it exist. Now that the silent skip is the thing being fixed, a workflow carrying
+# the silent step has the name and is not done -- keying on the name would leave it
+# there and report success, which is the same shape as the hole this script exists
+# to catch: something that looks present and never fires.
+STEP_NAME = "      - name: Android unit tests (Kotlin)\n"
+KOTLIN_DONE = 'echo "changed paths: $(printf'
+
+if KOTLIN_DONE in text:
     print("  kotlin gate: already present")
+elif STEP_NAME in text:
+    step_lines = text.splitlines(keepends=True)
+    start = next(i for i, line in enumerate(step_lines) if line == STEP_NAME)
+    end = next(
+        (
+            i
+            for i in range(start + 1, len(step_lines))
+            if step_lines[i].startswith("      - name: ")
+        ),
+        len(step_lines),
+    )
+    # KOTLIN_STEP opens with the blank line that separates steps; the slot being
+    # replaced already sits after that blank line.
+    step_lines[start:end] = KOTLIN_STEP.splitlines(keepends=True)[1:]
+    text = "".join(step_lines)
+    print("  kotlin gate: silent version replaced with one that says what it skipped")
 else:
     count = text.count(KOTLIN_ANCHOR)
     check(count == 1, f"flutter-test anchor matched {count} times (expected exactly 1)")
@@ -216,13 +255,25 @@ if len(guard_start) == 1:
             line.strip() for line in lines[guard_start[0] : guard_end + 1]
         ) + "\n"
 
-        def guard_skips(changed: str) -> bool:
+        # Run as it runs on the runner: the two SHAs the step reads are given to
+        # it, rather than left unset, so what is exercised is the guard and not
+        # bash's treatment of an empty variable.
+        def guard_run(changed: str, base: str = "0" * 40, head: str = "deadbeef") -> str:
             run = subprocess.run(
-                ["bash", "-c", f"changed={shlex.quote(changed)}\n" + guard],
+                [
+                    "bash",
+                    "-c",
+                    f"changed={shlex.quote(changed)}\n"
+                    f"BASE_SHA={shlex.quote(base)}\n"
+                    f"HEAD_SHA={shlex.quote(head)}\n" + guard,
+                ],
                 capture_output=True,
                 text=True,
             )
-            return "skipping the Kotlin unit tests" in run.stdout
+            return run.stdout + run.stderr
+
+        def guard_skips(changed: str) -> bool:
+            return "skipping the Kotlin unit tests" in guard_run(changed)
 
         check(
             not guard_skips(
@@ -241,6 +292,30 @@ if len(guard_start) == 1:
         check(
             guard_skips(""),
             "an empty change set would run the Kotlin tests anyway",
+        )
+
+        # And the skip is not silent. A guard whose only two outcomes are "ran"
+        # and "said nothing" cannot be told from a guard that is broken: every run
+        # is green and the log agrees with whichever reading the reader prefers.
+        # So the skip reports what it diffed and what it received, and a base that
+        # is not a commit -- all zeros on a new branch, which is the shape that
+        # would silently skip forever -- is called out as the reason.
+        skip_log = guard_run("lib/main.dart")
+        check(
+            "changed paths: 1" in skip_log,
+            "the skip does not report how many paths it received",
+        )
+        check(
+            "    lib/main.dart" in skip_log,
+            "the skip does not show the paths it received",
+        )
+        check(
+            "is not a commit in this checkout" in skip_log,
+            "an all-zeros base skips without saying it is not a commit",
+        )
+        check(
+            "changed paths:" not in guard_run("android/gradle.properties"),
+            "the path that runs the tests also prints the skip diagnostic",
         )
 
 # 4. And the reuse that would have looked right is impossible -- which is what the

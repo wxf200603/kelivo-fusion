@@ -193,6 +193,19 @@ jobs:
             *android/*) ;;
             *)
               echo "no android/ path changed in $BASE_SHA..$HEAD_SHA: skipping the Kotlin unit tests"
+              # The skip is the half that can be wrong in silence: on a new branch
+              # `github.event.before` is all zeros, the diff comes back empty, and
+              # every run is green with one line saying it skipped. So the skip
+              # says what it received, and whether the base it diffed against was
+              # a commit at all -- a skip that should have run is then visible in
+              # the log rather than inferred from a step that passed. This echo is
+              # also the marker the patch script keys on: a workflow still carrying
+              # the silent version is rewritten, not recognised as done.
+              echo "changed paths: $(printf '%s\n' "$changed" | grep -c . || true)"
+              printf '%s\n' "$changed" | grep . | head -5 | sed 's/^/    /' || true
+              if ! git rev-parse --verify --quiet "${BASE_SHA}^{commit}" >/dev/null 2>&1; then
+                echo "base '${BASE_SHA}' is not a commit in this checkout: the diff is empty for that reason, and not because nothing changed"
+              fi
               exit 0
               ;;
           esac
