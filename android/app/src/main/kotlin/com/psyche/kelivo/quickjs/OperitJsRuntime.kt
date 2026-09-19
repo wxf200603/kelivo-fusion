@@ -2,6 +2,7 @@ package com.psyche.kelivo.quickjs
 
 import android.content.Context
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import com.psyche.kelivo.workspace.KelivoWorkspaceHost
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
@@ -507,7 +508,8 @@ class OperitJsRuntime(
     // org.hjson rather than org.json alone. Extraction and parse are the upstream's
     // (PackageManager.kt:2467 and :2258); the return type is not, because callers
     // here report "no block" separately from an empty one. See METADATA_PATTERN.
-    private fun parseMetadata(source: String): JSONObject? {
+    @VisibleForTesting
+    internal fun parseMetadata(source: String): JSONObject? {
         val match = METADATA_PATTERN.find(source) ?: return null
         val block = match.groupValues[1].trim()
         if (block.isEmpty()) return null

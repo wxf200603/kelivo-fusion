@@ -162,3 +162,32 @@ jobs:
 
       - name: flutter test
         run: flutter test
+
+      - name: Probe the Android unit-test invocation
+        # android/.gitignore excludes gradlew, gradlew.bat and gradle-wrapper.jar
+        # (lines 1, 4 and 5), and this job has never had a JDK step, so how a
+        # Kotlin unit test would run here is a question for the runner rather than
+        # for this file. These lines answer it before anything is trusted to them.
+        #
+        # continue-on-error on purpose: this is a probe, and a probe that fails a
+        # green gate proves nothing while hiding its own answer. It becomes a real
+        # gate in the commit that knows the mechanism -- which is what this run is
+        # for.
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo '--- java ---'
+          java -version 2>&1 | head -3 || true
+          echo '--- wrapper before ---'
+          ls -l android/gradlew android/gradlew.bat android/gradle/wrapper/gradle-wrapper.jar 2>&1 || true
+          echo '--- config-only ---'
+          flutter build apk --config-only 2>&1 | tail -5 || true
+          echo '--- wrapper after ---'
+          ls -l android/gradlew android/gradle/wrapper/gradle-wrapper.jar 2>&1 || true
+          echo '--- unit tests ---'
+          if [ -x android/gradlew ]; then
+            (cd android && ./gradlew :app:testDebugUnitTest --no-daemon 2>&1 | tail -40)
+          else
+            echo 'no wrapper appeared: the invocation is still unknown'
+          fi

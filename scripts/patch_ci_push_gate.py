@@ -11,10 +11,16 @@ runs were `build-merged-apk`, which proves the APK compiles and nothing else.
 This adds `push` to the same workflow rather than creating a second one: a new
 file would carry its own copy of the toolchain setup and the two would drift.
 
-The Kotlin unit-test step is deliberately *not* added here. There are no Kotlin
-tests yet, so the step would report NO-SOURCE and prove nothing; it lands with
-the first real test and its junit dependency, in the commit that adds the
-org.hjson parsing.
+The Kotlin unit-test step is deliberately *not* added here. It was written when
+that sentence read "there are no Kotlin tests yet" -- which was wrong: the module
+already has Kotlin tests under `android/app/src/test/kotlin`, and
+`app/build.gradle.kts` already declares
+`testImplementation("junit:junit:4.13.2")` with
+`testImplementation("org.robolectric:robolectric:4.16.1")`, and
+`testOptions { unitTests.isIncludeAndroidResources = true }` is set for them.
+What was missing is that no job ever invoked them. The invocation is probed in
+the checks workflow first, because `android/gradlew` is gitignored and this job
+has no JDK step of its own.
 
 Self-checks:
 
