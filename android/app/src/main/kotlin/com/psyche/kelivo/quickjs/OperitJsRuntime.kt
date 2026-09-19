@@ -246,6 +246,7 @@ class OperitJsRuntime(
         val q = { s: String -> s.replace("\\", "\\\\").replace("'", "\\'") }
         rt.eval(buildString {
             append("globalThis.__operit_err = null; globalThis.__operit_out = undefined;")
+            append("globalThis.__operit_done = false;")
             append("(function(){")
             append("  var t = ((globalThis.__pkgs['").append(q(pkg)).append("']) || {})['")
                 .append(q(tool)).append("'];")
@@ -253,7 +254,7 @@ class OperitJsRuntime(
                 .append(q(tool)).append("'; return; }")
             append("  try {")
             append("    Promise.resolve(t(").append(argsJson.ifBlank { "{}" }).append(")).then(")
-            append("      function(v){ globalThis.__operit_out = (v === undefined ? null : v); },")
+            append("      function(v){ if (!globalThis.__operit_done) globalThis.__operit_out = (v === undefined ? null : v); },")
             append("      function(e){ globalThis.__operit_err = String((e && e.message) || e); });")
             append("  } catch (e) { globalThis.__operit_err = String((e && e.message) || e); }")
             append("})(); undefined;")
@@ -474,6 +475,16 @@ class OperitJsRuntime(
                 // a single shared container session set, not per-chat ones.
                 root.getChatId = function () {
                     return 'kelivo-shared';
+                };
+            }
+
+            if (typeof root.complete !== 'function') {
+                // Operit hands a package's result back through `complete`, not
+                // through the function's return value. Record it and let it win
+                // over the `undefined` a completing tool returns.
+                root.complete = function (value) {
+                    root.__operit_done = true;
+                    root.__operit_out = (value === undefined ? null : value);
                 };
             }
 
