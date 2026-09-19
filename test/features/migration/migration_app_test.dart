@@ -196,11 +196,20 @@ void main() {
       );
     });
     await tester.pump();
+    // The page reaches the retry state when work on the real clock finishes (the
+    // saver's file I/O, and the awaits around it), while `pump` advances only the
+    // fake clock: twenty 50 ms pumps burn a "second" in microseconds of wall time,
+    // so on a slow run the button had not been built when the loop gave up. Each
+    // pass yields real time and then pumps for the frames, so a state change driven
+    // by either clock lands.
     for (
       var i = 0;
-      i < 20 && find.byIcon(Lucide.RotateCcw).evaluate().isEmpty;
+      i < 40 && find.byIcon(Lucide.RotateCcw).evaluate().isEmpty;
       i++
     ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 25)),
+      );
       await tester.pump(const Duration(milliseconds: 50));
     }
 
