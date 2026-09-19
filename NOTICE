@@ -1,0 +1,33 @@
+kelivo-fusion
+=============
+
+A merge of two upstream projects with MIT components, distributed under
+AGPL-3.0 (see LICENSE). The full text of every license named below is kept in
+third_party/, and this file covers the code merged into or fetched by the
+application.
+
+Merged upstreams
+
+  kelivo      AGPL-3.0        https://github.com/Chevey339/kelivo
+              third_party/kelivo/LICENSE
+
+  Operit      LGPL-3.0-only   https://github.com/AAswordman/Operit
+              third_party/operit/LICENSE
+
+Components
+
+  QuickJS     MIT             not vendored: android/operit_quickjs/src/main/cpp/
+                              CMakeLists.txt fetches it at build time through
+                              operit_prepare_git_source() from
+                              https://github.com/bellard/quickjs.git (ref master)
+              Copyright (c) 2017-2021 Fabrice Bellard
+              Copyright (c) 2017-2021 Charlie Gordon
+              third_party/quickjs/LICENSE
+
+  hjson       MIT             Maven: org.hjson:hjson:3.0.0
+              Copyright (c) 2013, 2014 EclipseSource
+              Copyright (c) 2015-2016 Christian Zangl
+              third_party/hjson/LICENSE
+
+Flutter/Dart and Maven dependencies other than the two components above carry
+their own license metadata in their manifests.
