@@ -43,8 +43,18 @@ void main() {
 
     final loaded = await repository.getMessage('m-reasoning');
     expect(loaded, isNotNull);
-    expect(loaded!.reasoningStartAt, startedAt);
-    expect(loaded.reasoningFinishedAt, finishedAt);
+    // drift reads the DateTime column back without the UTC marker (same
+    // instant, local representation). Compare instants, as the sibling
+    // parts-roundtrip test does, so the assertion is about the value stored
+    // and not about how the column echoes its zone.
+    expect(
+      loaded!.reasoningStartAt?.millisecondsSinceEpoch,
+      startedAt.millisecondsSinceEpoch,
+    );
+    expect(
+      loaded.reasoningFinishedAt?.millisecondsSinceEpoch,
+      finishedAt.millisecondsSinceEpoch,
+    );
     expect(loaded.reasoningSegmentsJson, segments);
   });
 }
