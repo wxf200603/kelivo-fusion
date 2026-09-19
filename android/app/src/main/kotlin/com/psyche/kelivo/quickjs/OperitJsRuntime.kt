@@ -310,6 +310,12 @@ class OperitJsRuntime(
             return
         }
 
+        // `#call` runs `<pkg>:<tool> {json}` lines through [callTool].
+        if (text.startsWith(CALL_PREFIX)) {
+            runCallSelfTest(text.removePrefix(CALL_PREFIX))
+            return
+        }
+
         // A leading `#shell` selects the Android-side tool (root/Shizuku); anything
         // else runs inside the container as a normal terminal command.
         val useShell = text.startsWith(SHELL_PREFIX)
@@ -323,6 +329,27 @@ class OperitJsRuntime(
             callTool("super_admin", tool, JSONObject().put("command", command).toString())
         }.onFailure { diag("selftest $tool threw: ${it.message}") }
         diag("selftest $tool [$command] finished in ${System.currentTimeMillis() - startedAt}ms")
+    }
+
+    /** Runs each `<pkg>:<tool> {json}` line in [spec] through [callTool]. */
+    private fun runCallSelfTest(spec: String) {
+        for (line in spec.lines()) {
+            val l = line.trim()
+            if (l.isEmpty()) continue
+            val i = l.indexOf(' ')
+            val target = (if (i < 0) l else l.substring(0, i)).trim()
+            val args = (if (i < 0) "{}" else l.substring(i + 1)).trim().ifBlank { "{}" }
+            val c = target.indexOf(':')
+            if (c <= 0 || c == target.length - 1) {
+                diag("callselftest: bad target '$target'")
+                continue
+            }
+            val started = System.currentTimeMillis()
+            val out = runCatching {
+                callTool(target.substring(0, c), target.substring(c + 1), args)
+            }.getOrElse { "threw: ${it.message}" }
+            diag("callselftest $target -> ${out.take(600)} (${System.currentTimeMillis() - started}ms)")
+        }
     }
 
     /**
@@ -542,6 +569,9 @@ class OperitJsRuntime(
 
         /** Marker prefix that runs the multi-step interactive (PTY) self test. */
         const val PTY_PREFIX = "#pty"
+
+        /** Marker prefix that calls `pkg:tool {json}` lines directly. */
+        const val CALL_PREFIX = "#call"
         const val MAX_DRAIN_ROUNDS = 64
     }
 }
