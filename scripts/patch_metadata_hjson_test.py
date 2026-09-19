@@ -21,14 +21,13 @@ could quietly stop being HJSON and the test would keep passing. Each of the six
 is named in its own test method, so a regression has to break six assertions
 with names in them rather than one count.
 
-The CI half. `android/gradlew`, `gradlew.bat` and `gradle-wrapper.jar` are all
-excluded by `android/.gitignore:1,4,5`, and the PR-checks job has never had a JDK
-step, so how a unit test would run there is a question for the runner. The step
-added below answers it -- java version, whether a wrapper appears, whether
-`--config-only` produces one, and then one honest attempt at
-`:app:testDebugUnitTest` -- and is `continue-on-error` on purpose: a probe that
-fails a green gate proves nothing and hides its own answer. Promoting it to a real
-gate is a separate commit, once the mechanism is a fact rather than a guess.
+The CI half used to live here. The step that runs this test was added as a probe,
+asked the runner the question it could only answer itself -- java 17.0.20.1 is
+present, `--config-only` writes the gitignored wrapper back, and
+`:app:testDebugUnitTest` then runs 118 tests -- and became a gate. It moved to
+`patch_ci_push_gate.py`, the script whose job is letting the checks that exist
+actually run, which also asserts that the gate stays guarded: only pushes that
+touch android/ pay its ~7 minutes.
 
 Self-checks:
 
@@ -47,8 +46,9 @@ Self-checks:
      would have been red on its first run.
   4. `$` is escaped exactly as `${'$'}` in the generated raw strings, because a
      raw Kotlin string treats a bare `$` as a template and would not compile.
-  5. The workflow still holds the three checks it had, and the probe is
-     `continue-on-error` with the wrapper question in its output.
+  5. The workflow is neither written nor asserted here: this script owns the test
+     and the annotation only. The Kotlin gate it used to add is asserted where it
+     now lives, in `patch_ci_push_gate.py`.
 """
 import json
 import re
@@ -59,8 +59,6 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "android/app/src/main/kotlin/com/psyche/kelivo/quickjs/OperitJsRuntime.kt"
 ASSETS = ROOT / "assets/operit_packages"
 TEST = ROOT / "android/app/src/test/kotlin/com/psyche/kelivo/quickjs/OperitJsRuntimeMetadataTest.kt"
-WORKFLOW = ROOT / ".github/workflows/pr-check.yml"
-PUSH_GATE_SCRIPT = ROOT / "scripts/patch_ci_push_gate.py"
 
 PACKAGES = (
     "automatic_ui_subagent",
@@ -83,66 +81,6 @@ ANNOTATED = (
 IMPORT_ANCHOR = "import android.util.Log\n"
 IMPORT_ADD = IMPORT_ANCHOR + "import androidx.annotation.VisibleForTesting\n"
 
-TEST_TAIL_ANCHOR = "      - name: flutter test\n        run: flutter test\n"
-PROBE = (
-    "\n"
-    "      - name: Probe the Android unit-test invocation\n"
-    "        # android/.gitignore excludes gradlew, gradlew.bat and gradle-wrapper.jar\n"
-    "        # (lines 1, 4 and 5), and this job has never had a JDK step, so how a\n"
-    "        # Kotlin unit test would run here is a question for the runner rather than\n"
-    "        # for this file. These lines answer it before anything is trusted to them.\n"
-    "        #\n"
-    "        # continue-on-error on purpose: this is a probe, and a probe that fails a\n"
-    "        # green gate proves nothing while hiding its own answer. It becomes a real\n"
-    "        # gate in the commit that knows the mechanism -- which is what this run is\n"
-    "        # for.\n"
-    "        continue-on-error: true\n"
-    "        shell: bash\n"
-    "        run: |\n"
-    "          set -uo pipefail\n"
-    "          echo '--- java ---'\n"
-    "          java -version 2>&1 | head -3 || true\n"
-    "          echo '--- wrapper before ---'\n"
-    "          ls -l android/gradlew android/gradlew.bat android/gradle/wrapper/gradle-wrapper.jar 2>&1 || true\n"
-    "          echo '--- config-only ---'\n"
-    "          flutter build apk --config-only 2>&1 | tail -5 || true\n"
-    "          echo '--- wrapper after ---'\n"
-    "          ls -l android/gradlew android/gradle/wrapper/gradle-wrapper.jar 2>&1 || true\n"
-    "          echo '--- unit tests ---'\n"
-    "          if [ -x android/gradlew ]; then\n"
-    "            (cd android && ./gradlew :app:testDebugUnitTest --no-daemon 2>&1 | tail -40)\n"
-    "            # `tail -40` can cut the assertion messages off, and those are what say\n"
-    "            # why a run is red. They are read back from the report the task leaves\n"
-    "            # behind. Both roots are tried: the Flutter plugin re-roots the build\n"
-    "            # directory at the repository, the plain Android layout does not.\n"
-    "            for report in build/app/test-results/testDebugUnitTest/*.xml \\\n"
-    "                          android/app/build/test-results/testDebugUnitTest/*.xml; do\n"
-    "              [ -f \"$report\" ] || continue\n"
-    "              grep -h -m1 -A3 '<failure' \"$report\" | sed 's/^/    /' || true\n"
-    "            done\n"
-    "          else\n"
-    "            echo 'no wrapper appeared: the invocation is still unknown'\n"
-    "          fi\n"
-)
-
-STALE_CLAIM = (
-    "The Kotlin unit-test step is deliberately *not* added here. There are no Kotlin\n"
-    "tests yet, so the step would report NO-SOURCE and prove nothing; it lands with\n"
-    "the first real test and its junit dependency, in the commit that adds the\n"
-    "org.hjson parsing.\n"
-)
-STALE_FIX = (
-    "The Kotlin unit-test step is deliberately *not* added here. It was written when\n"
-    "that sentence read \"there are no Kotlin tests yet\" -- which was wrong: the module\n"
-    "already has Kotlin tests under `android/app/src/test/kotlin`, and\n"
-    "`app/build.gradle.kts` already declares\n"
-    "`testImplementation(\"junit:junit:4.13.2\")` with\n"
-    "`testImplementation(\"org.robolectric:robolectric:4.16.1\")`, and\n"
-    "`testOptions { unitTests.isIncludeAndroidResources = true }` is set for them.\n"
-    "What was missing is that no job ever invoked them. The invocation is probed in\n"
-    "the checks workflow first, because `android/gradlew` is gitignored and this job\n"
-    "has no JDK step of its own.\n"
-)
 
 failures: list[str] = []
 
@@ -317,35 +255,8 @@ if blocks:
 else:
     check(TEST.is_file(), "no fixtures were extracted and no test file exists")
 
-# ------------------------------------------------------------------ the workflow
-if WORKFLOW.is_file():
-    text = WORKFLOW.read_text(encoding="utf-8")
-    if "Probe the Android unit-test invocation" in text:
-        print("  workflow: probe already present")
-    else:
-        count = text.count(TEST_TAIL_ANCHOR)
-        check(count == 1, f"flutter-test anchor matched {count} times")
-        if count == 1:
-            text = text.replace(TEST_TAIL_ANCHOR, TEST_TAIL_ANCHOR + PROBE, 1)
-            print("  workflow: probe added")
-            WORKFLOW.write_text(text, encoding="utf-8")
-
-# ------------------------------------------------------------ the stale comment
-if PUSH_GATE_SCRIPT.is_file():
-    text = PUSH_GATE_SCRIPT.read_text(encoding="utf-8")
-    if STALE_FIX in text:
-        print("  push-gate script: already corrected")
-    else:
-        count = text.count(STALE_CLAIM)
-        check(count == 1, f"stale claim matched {count} times")
-        if count == 1:
-            PUSH_GATE_SCRIPT.write_text(text.replace(STALE_CLAIM, STALE_FIX, 1), encoding="utf-8")
-            print("  push-gate script: stale claim corrected")
-
 runtime = RUNTIME.read_text(encoding="utf-8") if RUNTIME.is_file() else ""
 test = TEST.read_text(encoding="utf-8") if TEST.is_file() else ""
-workflow = WORKFLOW.read_text(encoding="utf-8") if WORKFLOW.is_file() else ""
-gate = PUSH_GATE_SCRIPT.read_text(encoding="utf-8") if PUSH_GATE_SCRIPT.is_file() else ""
 
 # 1. Production still calls it, once, through the internal function.
 check(ANNOTATED in runtime, "the runtime function is not internal+annotated")
@@ -375,20 +286,11 @@ for name, block in blocks.items():
     escaped = block.replace("$", "${'$'}")
     check(escaped in test, f"{name}: the fixture in the test is not the asset's block")
 
-# 5. The gate is intact and the probe is a probe.
-for step in (
-    "dart format --output=none --set-exit-if-changed $files",
-    "dart analyze --fatal-infos lib test integration_test",
-    "flutter test",
-):
-    check(step in workflow, f"the gate lost a step: {step}")
-check("continue-on-error: true" in workflow, "the probe is not allowed to fail")
-check("ls -l android/gradlew" in workflow, "the probe does not ask about the wrapper")
-check(":app:testDebugUnitTest" in workflow, "the probe does not attempt the test task")
-# A failing test task must come back with its assertion message, or the probe
-# reports "6 failed" without the one thing that explains it.
-check("<failure" in workflow, "the probe does not read a failure message back")
-check("There are no Kotlin\n" not in gate, "the stale claim is still there")
+# The workflow is neither written nor asserted here any more. The step that runs
+# this test became a gate, and it lives in `patch_ci_push_gate.py` -- the script
+# whose job is letting the checks that exist actually run -- together with the
+# android/ guard that decides when it runs. This script now owns two things: the
+# test, and the annotation that makes it callable.
 
 if failures:
     print("FAILED:")
@@ -396,4 +298,4 @@ if failures:
         print("  -", item)
     sys.exit(1)
 
-print("OK: six named fixtures pin the HJSON path, and the runner is asked how to run them")
+print("OK: six named fixtures pin the HJSON path; the gate that runs them lives in patch_ci_push_gate.py")

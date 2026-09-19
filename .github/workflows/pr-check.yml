@@ -163,20 +163,40 @@ jobs:
       - name: flutter test
         run: flutter test
 
-      - name: Probe the Android unit-test invocation
-        # android/.gitignore excludes gradlew, gradlew.bat and gradle-wrapper.jar
-        # (lines 1, 4 and 5), and this job has never had a JDK step, so how a
-        # Kotlin unit test would run here is a question for the runner rather than
-        # for this file. These lines answer it before anything is trusted to them.
+      - name: Android unit tests (Kotlin)
+        # A gate, not a probe. The step that preceded this one was a probe, and it
+        # answered what it was asked: java 17.0.20.1 is present, `android/gradlew` is
+        # absent on checkout (android/.gitignore:1,4,5),
+        # `flutter build apk --config-only` writes it back (gradlew 4971 bytes,
+        # gradle-wrapper.jar 53636 bytes), and
+        # `cd android && ./gradlew :app:testDebugUnitTest --no-daemon` then runs 118
+        # tests -- six of which were red until fa018fd fixed the fixtures.
         #
-        # continue-on-error on purpose: this is a probe, and a probe that fails a
-        # green gate proves nothing while hiding its own answer. It becomes a real
-        # gate in the commit that knows the mechanism -- which is what this run is
-        # for.
-        continue-on-error: true
+        # Only pushes that touch android/ pay the ~7 minutes this costs. The list the
+        # format step computes cannot be reused for that decision: it is filtered to
+        # `^(lib|test|integration_test)/.*\.dart$`, so `android/` never appears in it
+        # and a condition built on it would never fire -- a gate that looks present
+        # and is not. The list below is computed for this question alone.
         shell: bash
         run: |
           set -uo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
+          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" 2>/dev/null || true)"
+          case "$changed" in
+            *android/*) ;;
+            *)
+              echo "no android/ path changed in $BASE_SHA..$HEAD_SHA: skipping the Kotlin unit tests"
+              exit 0
+              ;;
+          esac
+
           echo '--- java ---'
           java -version 2>&1 | head -3 || true
           echo '--- wrapper before ---'
@@ -198,5 +218,6 @@ jobs:
               grep -h -m1 -A3 '<failure' "$report" | sed 's/^/    /' || true
             done
           else
-            echo 'no wrapper appeared: the invocation is still unknown'
+            echo 'the wrapper is missing: `flutter build apk --config-only` did not write android/gradlew, so the Kotlin tests cannot run'
+            exit 1
           fi
