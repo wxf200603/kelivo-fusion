@@ -377,6 +377,47 @@ class OperitJsRuntime(
             val i = l.indexOf(' ')
             val target = (if (i < 0) l else l.substring(0, i)).trim()
             val args = (if (i < 0) "{}" else l.substring(i + 1)).trim().ifBlank { "{}" }
+            // `host:<method>` skips the package layer and calls
+            // `NativeInterface.__call` directly.
+            //
+            // SELF-TEST ONLY: no tool is registered under this prefix and no
+            // package exports it. It exists because the cases this contract is
+            // about cannot be produced through the package layer -- every
+            // deleteFile call site hardcodes `recursive` (github.js:799,
+            // file_converter.js:211) or keeps the path inside a cleanup helper
+            // (openai_draw.js:208, operit_editor.js:2599/2716), so EISDIR
+            // (directory + recursive=false) and ENOENT for a path the test
+            // picks are unreachable from a package. Remove it the day one
+            // exposes a delete whose arguments come from the outside.
+            //
+            // The argument text reaches __call verbatim, so it is the JSON
+            // array OperitHostDispatcher.kt:40 parses with `JSONArray(...)`:
+            //
+            //     #call host:Tools.Files.deleteFile ["/sdcard/t",false]
+            //
+            // An expected failure arrives here as a `THREW: ...` line: the
+            // dispatcher rethrows for this method (THROWING_METHODS).
+            if (target.startsWith(HOST_PREFIX)) {
+                val method = target.removePrefix(HOST_PREFIX)
+                // `continue`, not `return`: one marker file carries several
+                // cases, and a return would silently drop the rest.
+                val rt = runtime ?: continue
+                val eval = rt.eval(
+                    "NativeInterface.__call(" +
+                        JSONObject.quote(method) + ", " +
+                        JSONObject.quote(args) + ")",
+                    "hostcall.js",
+                )
+                val out =
+                    if (eval.success) {
+                        eval.valueJson.orEmpty()
+                    } else {
+                        "THREW: ${eval.errorMessage}"
+                    }
+                diag("hostselftest $method -> $out")
+                continue
+            }
+
             val c = target.indexOf(':')
             if (c <= 0 || c == target.length - 1) {
                 diag("callselftest: bad target '$target'")
@@ -620,6 +661,12 @@ class OperitJsRuntime(
 
         /** Marker prefix that calls `pkg:tool {json}` lines directly. */
         const val CALL_PREFIX = "#call"
+
+        /**
+         * Marker prefix that drives `NativeInterface.__call` with no package in
+         * between. SELF-TEST ONLY -- see [runCallSelfTest].
+         */
+        const val HOST_PREFIX = "host:"
         const val MAX_DRAIN_ROUNDS = 64
     }
 }
