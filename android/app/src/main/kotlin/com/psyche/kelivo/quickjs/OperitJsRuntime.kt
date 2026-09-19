@@ -38,6 +38,13 @@ class OperitJsRuntime(
     @Volatile private var workspaceHost: KelivoWorkspaceHost? = null
     private val loaded = mutableSetOf<String>()
 
+    /**
+     * Packages whose load already failed, with the reason, so a repeat call
+     * reports it instead of re-running the eval and degrading to a
+     * "tool not found" message.
+     */
+    private val failedLoads = mutableMapOf<String, String>()
+
     fun attach() {
         diag("attach()")
         channel.setMethodCallHandler { call, result ->
@@ -109,6 +116,7 @@ class OperitJsRuntime(
         runCatching { workspaceHost?.close() }
         workspaceHost = null
         loaded.clear()
+        failedLoads.clear()
         val host = KelivoWorkspaceHost(context, cfg)
         val (rt, _) = QuickJsHostEnvironment.create(host)
         workspaceHost = host
@@ -233,12 +241,41 @@ class OperitJsRuntime(
 
         if (!loaded.contains(pkg)) {
             val source = readPackageSource(pkg) ?: return err("package not found: $pkg")
-            rt.eval(buildString {
-                append("var module = { exports: {} }; var exports = module.exports;\n")
-                append(source)
-                append("\n;globalThis.__pkgs = globalThis.__pkgs || {};")
-                append("globalThis.__pkgs[").append(JSONObject.quote(pkg)).append("] = module.exports; undefined;")
-            }, "$pkg.js")
+            // A package that threw while it was evaluated leaves module.exports
+            // empty, and every later lookup then says "tool not found" - which
+            // reads like a missing tool, not a broken package. Load once and
+            // remember why it failed.
+            failedLoads[pkg]?.let { return err(it) }
+
+            // Only the eval is guarded; a missing source is reported earlier.
+            // Two shapes, and checking `success` alone would miss the second:
+            //   1. native caught a JS throw -> EvalResult.success == false;
+            //   2. the payload is not JSON (empty / truncated) -> parse throws.
+            val loadAttempt = runCatching {
+                rt.eval(buildString {
+                    append("var module = { exports: {} }; var exports = module.exports;\n")
+                    append(source)
+                    append("\n;globalThis.__pkgs = globalThis.__pkgs || {};")
+                    append("globalThis.__pkgs[").append(JSONObject.quote(pkg)).append("] = module.exports; undefined;")
+                }, "$pkg.js")
+            }
+            val loadFailure = loadAttempt.fold(
+                onSuccess = { result ->
+                    if (result.success) {
+                        null
+                    } else {
+                        listOfNotNull(result.errorMessage, result.errorStack, result.errorDetailsJson)
+                            .joinToString(" | ")
+                            .ifBlank { "eval returned success=false" }
+                    }
+                },
+                onFailure = { error -> "${error.javaClass.simpleName}: ${error.message}" },
+            )
+            if (loadFailure != null) {
+                val message = "package $pkg failed to load: $loadFailure"
+                failedLoads[pkg] = message
+                return err(message)
+            }
             rt.executePendingJobs()
             loaded.add(pkg)
         }
