@@ -896,6 +896,9 @@ class KelivoWorkspaceHost(
         if (append && file.isFile) file.appendText(content) else file.writeText(content)
     }
 
+    override fun fileExists(path: String, environment: String?): JSONObject =
+        JSONObject().apply { put("exists", File(path).exists()) }
+
     // ----------------------------------------------------------------- storage
 
     /**

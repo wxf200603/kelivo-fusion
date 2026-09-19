@@ -90,6 +90,13 @@ class OperitHostDispatcher(
                     null
                 }
 
+                "Tools.Files.exists" -> {
+                    host.fileExists(
+                        args?.optString(0).orEmpty(),
+                        args?.optString(1)?.takeIf { it.isNotBlank() },
+                    ).toString()
+                }
+
                 else -> fallback?.invoke(method, argsJson) ?: notSupported(method)
             }
         } catch (t: Throwable) {

@@ -55,4 +55,7 @@ interface KelivoHost {
 
     /** Writes [content] to [path], appending when [append] is true. */
     fun fileWrite(path: String, content: String, append: Boolean)
+
+    /** Checks whether a file or directory exists at [path]. */
+    fun fileExists(path: String, environment: String?): JSONObject
 }
