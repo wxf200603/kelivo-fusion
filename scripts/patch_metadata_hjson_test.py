@@ -118,7 +118,7 @@ PROBE = (
     "            for report in build/app/test-results/testDebugUnitTest/*.xml \\\n"
     "                          android/app/build/test-results/testDebugUnitTest/*.xml; do\n"
     "              [ -f \"$report\" ] || continue\n"
-    "              grep -h -m1 -A3 '<failure' \"$report\" | sed 's/^/    /'\n"
+    "              grep -h -m1 -A3 '<failure' \"$report\" | sed 's/^/    /' || true\n"
     "            done\n"
     "          else\n"
     "            echo 'no wrapper appeared: the invocation is still unknown'\n"

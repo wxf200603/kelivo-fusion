@@ -195,7 +195,7 @@ jobs:
             for report in build/app/test-results/testDebugUnitTest/*.xml \
                           android/app/build/test-results/testDebugUnitTest/*.xml; do
               [ -f "$report" ] || continue
-              grep -h -m1 -A3 '<failure' "$report" | sed 's/^/    /'
+              grep -h -m1 -A3 '<failure' "$report" | sed 's/^/    /' || true
             done
           else
             echo 'no wrapper appeared: the invocation is still unknown'
