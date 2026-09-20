@@ -155,6 +155,16 @@ class OperitHostDispatcher(
                     // accepted; accepting one would be inventing an interface.
                     host.fileList(args?.optString(0).orEmpty()).toString()
                 }
+                "Tools.Files.info" -> {
+                    // args[1] would be `environment`; deliberately not read, for the same
+                    // reason as the rest of this family - the dispatcher serves a single
+                    // host and KelivoHost.fileInfo() takes no environment. The second call
+                    // site is what makes that concrete rather than ceremonial:
+                    // extended_file_tools.js:104 passes `params.environment`, a variable its
+                    // own schema marks optional, so it can be undefined. There is no enum
+                    // here to route on even in principle.
+                    host.fileInfo(args?.optString(0).orEmpty()).toString()
+                }
                 else -> fallback?.invoke(method, argsJson) ?: notSupported(method)
             }
         } catch (t: Throwable) {
@@ -169,8 +179,8 @@ class OperitHostDispatcher(
          * Methods that surface a failure as a JS throw instead of an error object.
          *
          * This started with Files.deleteFile and now includes Files.readBinary,
-         * Files.writeBinary, Files.read and Files.list. The Files family convention
-         * is: file operations that touch the real filesystem
+         * Files.writeBinary, Files.read, Files.list and Files.info. The Files family
+         * convention is: file operations that touch the real filesystem
          * throw on failure, because (a) callers wrap them in try/catch and expect the
          * throw, and (b) returning an error object degrades the failure into a
          * meaningless placeholder at the call site (contentBase64 empty / undefined.length).
@@ -184,6 +194,7 @@ class OperitHostDispatcher(
             "Tools.Files.writeBinary",
             "Tools.Files.read",
             "Tools.Files.list",
+            "Tools.Files.info",
         )
     }
 

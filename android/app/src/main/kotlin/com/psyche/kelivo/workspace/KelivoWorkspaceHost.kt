@@ -1040,6 +1040,24 @@ class KelivoWorkspaceHost(
         return JSONObject().put("entries", entries)
     }
 
+    override fun fileInfo(path: String): JSONObject {
+        val target = File(path)
+        // Same zero-validation stance as every other Files method here: `path` is the
+        // caller's absolute path, and there is no workspace root to check it against.
+        if (!target.exists()) {
+            throw FileNotFoundException("ENOENT: no such file or directory: $path")
+        }
+        // Exactly two classes, on purpose. No EACCES and no EIO: File.isDirectory() on
+        // Android resolves the parent's directory entry rather than the target's own
+        // mode, so a permission failure at this point was never observed - and an
+        // unobserved error code would be invented rather than measured. exists() runs
+        // first because isDirectory() is also false for a path that is not there.
+        // "directory" is the exact word: operit_editor.js:2799 compares
+        // `=== "directory"`, and its own local default of "folder" is never compared
+        // against fileType at all - returning "folder" would break that chain silently.
+        return JSONObject().put("fileType", if (target.isDirectory) "directory" else "file")
+    }
+
     // ----------------------------------------------------------------- storage
 
     /**

@@ -226,4 +226,29 @@ interface KelivoHost {
      * already expect to be small (a package folder, the external package dir).
      */
     fun fileList(path: String): JSONObject
+
+    /**
+     * Returns only {"fileType": "file" | "directory"}.
+     *
+     * The single call site that reads a field (operit_editor.js:2588) uses
+     * .fileType only, and the other (extended_file_tools.js:104) forwards the
+     * whole object to the model without reading anything — that is "the caller
+     * does not care yet", not "more fields are needed". Fields are cheap to add
+     * and expensive to retract: a sizeBytes/lastModifiedMs/name here would be a
+     * contract with no reader, so it is not added. When a caller needs one, add
+     * it in its own commit with the KDoc updated to say who reads it.
+     *
+     * `fileType` is exactly "file" or "directory" (lower-case). Do NOT return
+     * "folder": operit_editor.js:2794 has a local variable defaulting to "folder"
+     * that is never compared against fileType, but 2799 does `=== "directory"`,
+     * so a "folder" here would silently send the whole toolpkg-packing path
+     * down the wrong branch.
+     *
+     * No workspace root, no path binding, no containment check: [path] is the
+     * caller's absolute path, exactly as [fileList] / [fileRead] / [fileDelete]
+     * treat theirs.
+     *
+     * Throws when the target cannot be inspected: missing -> ENOENT.
+     */
+    fun fileInfo(path: String): JSONObject
 }
