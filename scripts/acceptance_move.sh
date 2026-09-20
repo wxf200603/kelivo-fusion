@@ -219,6 +219,34 @@ setup() {
     printf '%s' "$C_T9" > "$TREE9/a.txt"
     printf '%s' "$C_F9" > "$FILE9"
 
+    # The /data-side fixtures belong to the APP, not to root. This driver runs as root, so
+    # anything it creates under /data/data/<pkg>/files is root-owned unless it says
+    # otherwise -- and the app then cannot write into mv5/ or unlink inside mv6/, which is
+    # exactly how the first device round failed cases 5 and 6 (EACCES on open; "failed to
+    # delete"), with the implementation reporting those two failures correctly and this
+    # setup being the thing that was wrong. Ownership is checked after the chown rather
+    # than assumed, so this cannot silently come back.
+    app_uid=$(stat -c %u "$FILES" 2>/dev/null)
+    app_gid=$(stat -c %g "$FILES" 2>/dev/null)
+    if [ -z "$app_uid" ] || [ -z "$app_gid" ]; then
+        echo "FAIL cannot read the owner of $FILES -- the cross-device fixtures cannot be" >&2
+        echo "     handed to the app, so cases 5 and 6 would fail for a reason unrelated" >&2
+        echo "     to the code under test. Stopping." >&2
+        exit 1
+    fi
+    chown -R "$app_uid:$app_gid" "$FILES/mv5" "$FILES/mv6" 2>/dev/null
+    for d in "$FILES/mv5" "$FILES/mv6" "$S6"; do
+        u=$(stat -c %u "$d" 2>/dev/null)
+        if [ "$u" != "$app_uid" ]; then
+            echo "FAIL $d is owned by uid ${u:-?}, not by the app (uid $app_uid) -- cases 5 and 6" >&2
+            echo "     would fail on permissions rather than on the code under test." >&2
+            exit 1
+        fi
+    done
+    echo "fixtures on the /data side are app-owned (uid $app_uid, gid $app_gid):"
+    echo "  $FILES/mv5 (case 5 destination directory)"
+    echo "  $FILES/mv6 (case 6 source directory)  src6.txt"
+
     # The expectation copies. Nothing in verify() compares against the fixture itself: a
     # move removes the source, so the only honest reference is a copy taken before the run.
     cp "$S1" "$RD/.exp_s1"
