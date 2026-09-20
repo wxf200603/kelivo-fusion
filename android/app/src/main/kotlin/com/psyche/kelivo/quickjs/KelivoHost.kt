@@ -148,10 +148,13 @@ interface KelivoHost {
      * and nothing to pretend to route on.
      *
      * Decoding is strict: a CharsetDecoder with REPORT on malformed input and on
-     * unmappable characters, not readText(). A lenient decode replaces bad bytes
-     * with U+FFFD and hands the damage downstream, where operit_editor.js:2729-2741
-     * reports it as a manifest *parse* error - an encoding problem wearing a content
-     * problem's clothes. Here it fails at the read, where it happened.
+     * unmappable characters, not readText(). A lenient decode replaces bad bytes with
+     * U+FFFD and hands the damage downstream, where operit_editor.js:2729-2741 does
+     * not report a parse error: its catch (2741-2743) carries only a comment and
+     * swallows the JSON.parse failure into the regex fallback below. The error that
+     * can survive is a missing-field one — manifest.toolpkg_id is required (2762) or
+     * manifest.main is required (2765) — an encoding problem wearing a content
+     * problem's clothes. Failing here, at the read, is how it stays an encoding problem.
      *
      * An empty file is a **successful** read: {content:""}. This answers "could it
      * be read", not "is the content useful"; code_runner.js:828 turns empty content
