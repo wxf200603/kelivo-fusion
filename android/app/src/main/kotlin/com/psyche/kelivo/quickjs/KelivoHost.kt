@@ -173,4 +173,57 @@ interface KelivoHost {
      * object's own `environment` is ignored like every other one in this family.
      */
     fun fileRead(path: String): JSONObject
+
+    /**
+     * Lists the directory at [path].
+     *
+     * On success returns {"entries": [{"name": "...", "isDirectory": true|false}, ...]}.
+     * On failure throws (ENOENT / ENOTDIR / EIO).
+     *
+     * Deliberately not workspace-scoped: no workspace root, no path binding and no
+     * containment check. [path] is the caller's absolute path, exactly as
+     * [fileMkdir] / [fileWrite] / [fileExists] / [fileDelete] / [fileReadBinary] /
+     * [fileWriteBinary] / [fileRead] treat theirs. There is no `environment`
+     * parameter to read, and nothing to pretend to route on: the two call sites
+     * pass the literal "android" (operit_editor.js:2700, 2838).
+     *
+     * An entry carries **only** `name` and `isDirectory`, because those are the only
+     * two fields any call site reads: operit_editor.js:2702-2703 tests `name` and
+     * filters on `isDirectory`, and 2840-2846 reads both. Nothing reads a size, an
+     * mtime or a joined path, and a field the whole repository never reads is a
+     * contract with no reader - cheap to add later, expensive to retract. The entry
+     * speaks a boolean while [fileInfo] speaks "file"/"directory" as a string: that
+     * asymmetry is what the two call families use, not a preference.
+     *
+     * An empty directory is a **successful** list: {"entries": []}. This answers
+     * "what is in there", not "is there anything in there" - the same stance as an
+     * empty file being a successful read in [fileRead]. The one call site that cannot
+     * work with nothing says so itself, downstream: operit_editor.js:2871-2872 turns
+     * zero copied files into "No packable files found".
+     *
+     * The order of `entries` is whatever java.io.File.listFiles() returns (readdir
+     * order). It is **not** sorted, deliberately: neither call site depends on an
+     * order (2701 and 2839 both just iterate), so sorting here would be inventing a
+     * contract no caller asked for. Do not rely on the order.
+     *
+     * "." and ".." are **not** produced - File.listFiles() does not include them -
+     * so operit_editor.js:2841's defensive filter of those two stays correct.
+     *
+     * Failure classes, and the one that is new to this family:
+     *   - missing path -> ENOENT;
+     *   - present but not a directory -> **ENOTDIR**. The family had no word for
+     *     this before: EISDIR says the opposite, and ENOENT would be a lie about a
+     *     path that is right there. Call sites branch on the message prefix, so the
+     *     prefix is part of the contract.
+     *   - File.listFiles() returning null after both checks passed -> EIO. This is
+     *     also where an unreadable directory lands, because File.listFiles()
+     *     collapses a permission failure into the same null - so EACCES cannot be
+     *     separated from any other refusal here. Documented, not guessed at.
+     *
+     * **No size limit**: the whole listing is materialised in memory and shipped as
+     * a JSON string, a directory with very many entries being the one input class
+     * this method does not bound. No call site lists a directory it does not
+     * already expect to be small (a package folder, the external package dir).
+     */
+    fun fileList(path: String): JSONObject
 }

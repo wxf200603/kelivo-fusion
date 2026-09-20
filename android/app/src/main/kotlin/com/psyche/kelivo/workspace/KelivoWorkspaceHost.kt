@@ -6,6 +6,7 @@ import com.psyche.kelivo.quickjs.KelivoHost
 import com.psyche.kelivo.shell.RootShell
 import com.psyche.kelivo.shell.ShizukuShell
 import com.psyche.kelivo.shell.readCapped
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -1004,6 +1005,39 @@ class KelivoWorkspaceHost(
         // Not a .size / .encoding / .truncated payload: no call site reads anything but
         // `content` (code_runner.js:828, file_converter.js:191, operit_editor.js:2615).
         return JSONObject().put("content", text)
+    }
+
+    override fun fileList(path: String): JSONObject {
+        val target = File(path)
+        // Same zero-validation stance as every other Files method here: `path` is the
+        // caller's absolute path, and there is no workspace root to check it against.
+        // Existence is checked before the directory test, so a missing path reads as
+        // ENOENT rather than ENOTDIR.
+        if (!target.exists()) {
+            throw FileNotFoundException("ENOENT: no such file or directory: $path")
+        }
+        // ENOTDIR is new to this file's vocabulary: ENOENT would be a lie about a
+        // path that is right there, and EISDIR says the opposite of what is true.
+        // Call sites branch on the prefix, so the prefix is spelled out.
+        if (!target.isDirectory) {
+            throw FileNotFoundException("ENOTDIR: not a directory: $path")
+        }
+        // Past both checks, a null from listFiles() is the platform refusing the
+        // readdir - which is also where an unreadable directory surfaces, because
+        // File.listFiles() collapses a permission failure into the same null. That is
+        // why this is EIO and not EACCES: the two are not separable here. The wording
+        // matches deleteTree's existing EIO (the same readdir refusal, line 927).
+        val children = target.listFiles()
+            ?: throw IOException("EIO: cannot list directory: $path")
+        val entries = JSONArray()
+        children.forEach { child ->
+            entries.put(
+                JSONObject()
+                    .put("name", child.name)
+                    .put("isDirectory", child.isDirectory),
+            )
+        }
+        return JSONObject().put("entries", entries)
     }
 
     // ----------------------------------------------------------------- storage

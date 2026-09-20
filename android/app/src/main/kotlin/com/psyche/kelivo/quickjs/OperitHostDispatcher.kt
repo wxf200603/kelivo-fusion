@@ -146,6 +146,15 @@ class OperitHostDispatcher(
                     }
                     host.fileRead(path).toString()
                 }
+                "Tools.Files.list" -> {
+                    // args[1] would be `environment`; deliberately not read, for the same
+                    // reason as deleteFile / readBinary / writeBinary / read: the dispatcher
+                    // serves a single host and KelivoHost.fileList() takes no environment.
+                    // Unlike read, args[0] is not polymorphic here - both call sites pass a
+                    // bare path string (operit_editor.js:2700, 2838) - so no object shape is
+                    // accepted; accepting one would be inventing an interface.
+                    host.fileList(args?.optString(0).orEmpty()).toString()
+                }
                 else -> fallback?.invoke(method, argsJson) ?: notSupported(method)
             }
         } catch (t: Throwable) {
@@ -160,8 +169,8 @@ class OperitHostDispatcher(
          * Methods that surface a failure as a JS throw instead of an error object.
          *
          * This started with Files.deleteFile and now includes Files.readBinary,
-         * Files.writeBinary and Files.read. The
-         * Files family convention is: file operations that touch the real filesystem
+         * Files.writeBinary, Files.read and Files.list. The Files family convention
+         * is: file operations that touch the real filesystem
          * throw on failure, because (a) callers wrap them in try/catch and expect the
          * throw, and (b) returning an error object degrades the failure into a
          * meaningless placeholder at the call site (contentBase64 empty / undefined.length).
@@ -174,6 +183,7 @@ class OperitHostDispatcher(
             "Tools.Files.readBinary",
             "Tools.Files.writeBinary",
             "Tools.Files.read",
+            "Tools.Files.list",
         )
     }
 
