@@ -406,9 +406,19 @@ interface KelivoHost {
      * Throws on failure: missing source -> ENOENT; a destination **inside** the source
      * -> IllegalArgumentException (the archive would be packed from bytes that change
      * while they are packed, so it is refused rather than left to filesystem timing);
-     * an unlistable source or an archive that cannot be written -> EIO. A destination
-     * equal to the source is **not** guarded -- no caller produces that shape, and the
-     * guard above is the one the round asked for.
+     * an unlistable source or an archive that cannot be written -> EIO.
+     *
+     * **A failure can leave a partial archive at [destination].** This method does not delete
+     * it, the same stance as [fileCopy] and [fileMove], which do not roll back either -- the
+     * difference is that a half-written archive is inert garbage rather than somebody's data,
+     * which is why not deleting it is acceptable at all. It is not acceptable for it to be
+     * silent, hence this paragraph.
+     *
+     * A destination **equal** to the source is not guarded, and its behaviour is
+     * **undefined**: the guard above covers the shape the round asked for (the source is an
+     * ancestor of the destination's parent, or that parent itself), and this shape has no
+     * observed caller -- the only one reads a staging directory while writing its archive
+     * into a separate temp build directory.
      */
     fun fileZip(source: String, destination: String, includeRootDirectory: Boolean): JSONObject
 }
