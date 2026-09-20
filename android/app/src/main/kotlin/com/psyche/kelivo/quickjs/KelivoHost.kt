@@ -133,4 +133,41 @@ interface KelivoHost {
      * write", the same way an empty file is a successful read in [fileReadBinary].
      */
     fun fileWriteBinary(path: String, base64: String): JSONObject
+
+    /**
+     * Reads [path] as UTF-8 text.
+     *
+     * On success returns {"content": "<file text>"}.
+     * On failure throws (ENOENT / EISDIR / EACCES / CharacterCodingException for
+     * bytes that are not valid UTF-8).
+     *
+     * Deliberately not workspace-scoped: no workspace root, no path binding and no
+     * containment check. [path] is the caller's absolute path, exactly as
+     * [fileMkdir] / [fileWrite] / [fileExists] / [fileDelete] / [fileReadBinary] /
+     * [fileWriteBinary] treat theirs. There is no `environment` parameter to read,
+     * and nothing to pretend to route on.
+     *
+     * Decoding is strict: a CharsetDecoder with REPORT on malformed input and on
+     * unmappable characters, not readText(). A lenient decode replaces bad bytes
+     * with U+FFFD and hands the damage downstream, where operit_editor.js:2729-2741
+     * reports it as a manifest *parse* error - an encoding problem wearing a content
+     * problem's clothes. Here it fails at the read, where it happened.
+     *
+     * An empty file is a **successful** read: {content:""}. This answers "could it
+     * be read", not "is the content useful"; code_runner.js:828 turns empty content
+     * into its own error, which is that tool's business, not this one's.
+     *
+     * A leading UTF-8 BOM is **not** stripped: it arrives as U+FEFF at the start of
+     * `content`, and a downstream JSON.parse will reject it. None of the three call
+     * sites handles a BOM today, so stripping one would be inventing behaviour; it
+     * is stated here so the next reader knows what they inherited.
+     *
+     * **No size limit**, same as [fileReadBinary]: the whole file is read into memory
+     * and shipped as a JSON string, so peak memory is roughly twice the file size.
+     *
+     * The dispatcher accepts either a bare path or the single {path, environment}
+     * object that operit_editor.js:2614 passes - only `.path` is read, and that
+     * object's own `environment` is ignored like every other one in this family.
+     */
+    fun fileRead(path: String): JSONObject
 }

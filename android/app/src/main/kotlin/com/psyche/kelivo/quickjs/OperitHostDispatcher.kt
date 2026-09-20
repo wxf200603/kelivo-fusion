@@ -130,6 +130,22 @@ class OperitHostDispatcher(
                         args?.optString(1).orEmpty(),
                     ).toString()
                 }
+                "Tools.Files.read" -> {
+                    // args[0] has two shapes: two of the three call sites pass a bare string
+                    // (code_runner.js:827, file_converter.js:191) and one passes an object
+                    // (operit_editor.js:2614). The object carries exactly {path, environment};
+                    // only `.path` is consumed here, and `.environment` is not read - the same
+                    // discipline as every other environment in this family. The object form is
+                    // an outlier even in its own file: the other twelve Files calls in
+                    // operit_editor.js pass environment as a positional string.
+                    val a0 = args?.opt(0)
+                    val path = when (a0) {
+                        is String -> a0
+                        is JSONObject -> a0.optString("path")
+                        else -> ""
+                    }
+                    host.fileRead(path).toString()
+                }
                 else -> fallback?.invoke(method, argsJson) ?: notSupported(method)
             }
         } catch (t: Throwable) {
@@ -143,8 +159,8 @@ class OperitHostDispatcher(
         /**
          * Methods that surface a failure as a JS throw instead of an error object.
          *
-         * This started with Files.deleteFile and now includes Files.readBinary and
-         * Files.writeBinary. The
+         * This started with Files.deleteFile and now includes Files.readBinary,
+         * Files.writeBinary and Files.read. The
          * Files family convention is: file operations that touch the real filesystem
          * throw on failure, because (a) callers wrap them in try/catch and expect the
          * throw, and (b) returning an error object degrades the failure into a
@@ -157,6 +173,7 @@ class OperitHostDispatcher(
             "Tools.Files.deleteFile",
             "Tools.Files.readBinary",
             "Tools.Files.writeBinary",
+            "Tools.Files.read",
         )
     }
 

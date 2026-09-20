@@ -11,6 +11,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -976,6 +978,32 @@ class KelivoWorkspaceHost(
         return JSONObject()
             .put("successful", true)
             .put("details", "${bytes.size} bytes written")
+    }
+
+    override fun fileRead(path: String): JSONObject {
+        val target = File(path)
+        // Same zero-validation stance as every other Files method here: `path` is the
+        // caller's absolute path, and there is no workspace root to check it against.
+        // A directory is caught before `isFile`, because a directory is not a file.
+        if (target.isDirectory) {
+            throw IOException("EISDIR: is a directory: $path")
+        }
+        if (!target.isFile) {
+            throw FileNotFoundException("ENOENT: no such file or directory: $path")
+        }
+        val bytes = target.readBytes()
+        // Strict UTF-8, on purpose: a lenient decode would replace bad bytes with U+FFFD
+        // and let the damage surface downstream as a JSON.parse failure, which reads
+        // like a content problem. Reporting it here keeps the encoding problem where it
+        // happened. CharacterCodingException is left untranslated for the callers.
+        val text = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes))
+            .toString()
+        // Not a .size / .encoding / .truncated payload: no call site reads anything but
+        // `content` (code_runner.js:828, file_converter.js:191, operit_editor.js:2615).
+        return JSONObject().put("content", text)
     }
 
     // ----------------------------------------------------------------- storage
