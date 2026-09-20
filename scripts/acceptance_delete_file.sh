@@ -60,7 +60,10 @@
 # broken run.
 #
 # The failure of every case arrives as a `THREW: ...` line in the diagnostic
-# log, because the dispatcher rethrows for this method (THROWING_METHODS).
+# log: this method is on the host's throw list, so the dispatcher rethrows
+# rather than answering with an error object. The list is not named here on
+# purpose -- it gains one member per Files method, and its identifier has
+# already been renamed once.
 
 # The class namespace is `com.psyche.kelivo` but the applicationId of the merged
 # build is `com.psyche.kelivo.fusion` (android/app/build.gradle.kts:10 vs :21).

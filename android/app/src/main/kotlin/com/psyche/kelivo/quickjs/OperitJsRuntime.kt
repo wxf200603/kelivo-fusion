@@ -395,8 +395,11 @@ class OperitJsRuntime(
             //
             //     #call host:Tools.Files.deleteFile ["/sdcard/t",false]
             //
-            // An expected failure arrives here as a `THREW: ...` line: the
-            // dispatcher rethrows for this method (THROWING_METHODS).
+            // An expected failure arrives here as a `THREW: ...` line: this
+            // method is on the host's throw list, so the dispatcher rethrows
+            // rather than answering with an error object. The list is not named
+            // here on purpose -- it gains one member per Files method, and its
+            // identifier has already been renamed once.
             if (target.startsWith(HOST_PREFIX)) {
                 val method = target.removePrefix(HOST_PREFIX)
                 // `continue`, not `return`: one marker file carries several
