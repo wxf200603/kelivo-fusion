@@ -251,4 +251,66 @@ interface KelivoHost {
      * Throws when the target cannot be inspected: missing -> ENOENT.
      */
     fun fileInfo(path: String): JSONObject
+
+    /**
+     * Copies [source] to [destination].
+     *
+     * On success returns **an empty object**, {} .
+     *
+     * No call site reads a field from this result: three of the four discard it
+     * outright (operit_editor.js:2858, 2947, 3069 - bare `await`s), and the fourth
+     * only tests `!!result` before passing the whole object to the model
+     * (extended_file_tools.js:100). The only shape the callers pin down is "a
+     * non-null object", because `!!result` is false for `undefined`. A field
+     * nothing reads is a contract with no reader, so none is invented here.
+     *
+     * On failure throws: missing source -> ENOENT; a directory source with
+     * [recursive] = false -> EISDIR; a filesystem refusal -> EIO.
+     *
+     * **No workspace root, no path binding, no containment check**: [source] and
+     * [destination] are the caller's absolute paths, exactly as [fileMkdir] /
+     * [fileWrite] / [fileDelete] / [fileReadBinary] / [fileWriteBinary] /
+     * [fileRead] / [fileList] / [fileInfo] treat theirs. [destination] is also
+     * **not** a directory to drop the source into - that is cp's rule, not this
+     * one. It names the result, which is why every call site builds it with
+     * path_join(...) instead of passing a folder.
+     *
+     * **The two environments are ignored, and cross-environment copy is not
+     * implemented.** This is the one place where a package promises the model
+     * something the host does not do: extended_file_tools.js:40-41 declares
+     * `source_environment` and `dest_environment`, and the package description
+     * advertises "复制文件/目录（支持跨环境复制）" / "copy ... (supports
+     * cross-environment copy)". The dispatcher reads neither argument, because
+     * there is nothing to route on - this host serves one namespace, in which
+     * "android" means "the device". Documented as a gap rather than silently
+     * accepted, so the discrepancy is on the record instead of in a model's
+     * expectation.
+     *
+     * [recursive] mirrors the package's own declared default
+     * (extended_file_tools.js:39, "default: false"): a directory source without it
+     * is an EISDIR, not a half-copy. No call site in this repository ever passes
+     * `true` - all three operit_editor sites copy single files - so the recursive
+     * path is exercised only by the acceptance driver.
+     *
+     * An existing destination is **overwritten**, deliberately:
+     *   - a file destination is replaced, non-atomically, the same stance as
+     *     [fileWrite] with append=false and [fileWriteBinary];
+     *   - a directory destination is **merged into**, not cleared first: entries
+     *     the source does not carry survive. There is no pruning, and no call site
+     *     copies onto an existing directory, so that is a documented choice rather
+     *     than a measured requirement.
+     * Replacement is the intended reading: both install paths delete the target
+     * themselves immediately before copying and log "replacing target file before
+     * copy" (operit_editor.js:2946/2947 and 3068/3069).
+     *
+     * A copy onto the same path is a **no-op returning {}**, not an error: reading
+     * and writing the same file would truncate it before it was read, which is the
+     * one silently destructive outcome this method could produce. The callers
+     * already read that case as "nothing to do" (operit_editor.js:2943 and 3066
+     * skip the copy and log exactly that).
+     *
+     * Copies are **streamed**, not buffered: unlike [fileRead] and
+     * [fileReadBinary], a copy has no reason to hold the payload in memory.
+     */
+    fun fileCopy(source: String, destination: String, recursive: Boolean): JSONObject
 }

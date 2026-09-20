@@ -10,7 +10,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileNotFoundException
+import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -1057,6 +1059,77 @@ class KelivoWorkspaceHost(
         // against fileType at all - returning "folder" would break that chain silently.
         return JSONObject().put("fileType", if (target.isDirectory) "directory" else "file")
     }
+
+    override fun fileCopy(source: String, destination: String, recursive: Boolean): JSONObject {
+        val src = File(source)
+        val dst = File(destination)
+        // Same zero-validation stance as every other Files method here: both paths are the
+        // caller's absolute paths, and there is no workspace root to check them against.
+        if (!src.exists()) {
+            throw FileNotFoundException("ENOENT: no such file or directory: $source")
+        }
+        // A copy onto itself would truncate the source before reading a byte of it. The
+        // callers already read this case as "nothing to do" (operit_editor.js:2943, 3066
+        // skip the copy and log exactly that), so it returns the empty success payload
+        // rather than an invented error code.
+        if (src.canonicalOrAbsolute() == dst.canonicalOrAbsolute()) {
+            return JSONObject()
+        }
+        if (src.isDirectory) {
+            // The same code and the same wording fileDelete already uses for this shape.
+            if (!recursive) {
+                throw IOException("EISDIR: is a directory (recursive=false): $source")
+            }
+            copyTree(src, dst)
+        } else {
+            copyFileTo(src, dst)
+        }
+        // {} : no call site reads a field here, and three of the four discard the object.
+        return JSONObject()
+    }
+
+    /**
+     * Depth-first copy. Streaming, so a large file is never materialised the way the
+     * [fileRead] / [fileReadBinary] payloads are.
+     *
+     * Private rather than inline because the move round needs the same walk for its
+     * cross-device fallback.
+     */
+    private fun copyTree(source: File, destination: File) {
+        if (source.isDirectory) {
+            if (destination.exists() && !destination.isDirectory) {
+                throw IOException("EISDIR: destination is a file, not a directory: ${destination.path}")
+            }
+            // Merge rather than replace: an existing directory keeps whatever the source
+            // does not carry. Documented in fileCopy; no call site exercises it.
+            if (!destination.isDirectory && !destination.mkdirs()) {
+                throw IOException("EIO: cannot create directory: ${destination.path}")
+            }
+            val children = source.listFiles()
+                ?: throw IOException("EIO: cannot list directory: ${source.path}")
+            for (child in children) {
+                copyTree(child, File(destination, child.name))
+            }
+            return
+        }
+        copyFileTo(source, destination)
+    }
+
+    private fun copyFileTo(source: File, destination: File) {
+        // Checked before the stream is opened, so this never depends on what the platform
+        // says when asked to write a directory. An unchecked FileOutputStream here would
+        // report it as a FileNotFoundException, i.e. as a missing file - the wrong class.
+        if (destination.isDirectory) {
+            throw IOException("EISDIR: destination is a directory: ${destination.path}")
+        }
+        destination.parentFile?.mkdirs()
+        FileInputStream(source).use { input ->
+            FileOutputStream(destination).use { output -> input.copyTo(output) }
+        }
+    }
+
+    private fun File.canonicalOrAbsolute(): String =
+        runCatching { canonicalPath }.getOrDefault(absolutePath)
 
     // ----------------------------------------------------------------- storage
 

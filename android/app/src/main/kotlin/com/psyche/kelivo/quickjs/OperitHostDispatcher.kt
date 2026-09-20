@@ -165,6 +165,24 @@ class OperitHostDispatcher(
                     // here to route on even in principle.
                     host.fileInfo(args?.optString(0).orEmpty()).toString()
                 }
+                "Tools.Files.copy" -> {
+                    // args[2] is `recursive`; args[3] and args[4] would be `source_environment`
+                    // and `dest_environment`. Neither environment is read: this host serves one
+                    // namespace, and extended_file_tools.js:40-41 is exactly where the package
+                    // promises the model a cross-environment copy that does not exist. Reading
+                    // them here would be pretending we route on them.
+                    // `recursive` is the first default in this family that optBoolean gets right
+                    // by accident: the package declares it false (extended_file_tools.js:39) and
+                    // org.json turns a JSON null into false. Files.zip will NOT have that luck -
+                    // its declared default is true - so its branch has to test isNull instead of
+                    // copying this line.
+                    val a = args ?: JSONArray()
+                    host.fileCopy(
+                        a.optString(0),
+                        a.optString(1),
+                        a.optBoolean(2),
+                    ).toString()
+                }
                 else -> fallback?.invoke(method, argsJson) ?: notSupported(method)
             }
         } catch (t: Throwable) {
@@ -179,8 +197,8 @@ class OperitHostDispatcher(
          * Methods that surface a failure as a JS throw instead of an error object.
          *
          * This started with Files.deleteFile and now includes Files.readBinary,
-         * Files.writeBinary, Files.read, Files.list and Files.info. The Files family
-         * convention is: file operations that touch the real filesystem
+         * Files.writeBinary, Files.read, Files.list, Files.info and Files.copy. The
+         * Files family convention is: file operations that touch the real filesystem
          * throw on failure, because (a) callers wrap them in try/catch and expect the
          * throw, and (b) returning an error object degrades the failure into a
          * meaningless placeholder at the call site (contentBase64 empty / undefined.length).
@@ -195,6 +213,7 @@ class OperitHostDispatcher(
             "Tools.Files.read",
             "Tools.Files.list",
             "Tools.Files.info",
+            "Tools.Files.copy",
         )
     }
 
