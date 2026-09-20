@@ -8,6 +8,7 @@ import com.psyche.kelivo.shell.ShizukuShell
 import com.psyche.kelivo.shell.readCapped
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -20,6 +21,8 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * The [KelivoHost] implementation that actually runs things.
@@ -1207,6 +1210,95 @@ class KelivoWorkspaceHost(
             deleteTree(target)
             true
         }.getOrDefault(false)
+    }
+
+    override fun fileZip(source: String, destination: String, includeRootDirectory: Boolean): JSONObject {
+        val src = File(source)
+        val dst = File(destination)
+        // Same zero-validation stance as every other Files method here: both paths are the
+        // caller's absolute paths, and there is no workspace root to check them against.
+        if (!src.exists()) {
+            throw FileNotFoundException("ENOENT: no such file or directory: $source")
+        }
+        // Parameter validation, not a filesystem answer: ZipOutputStream reads the source
+        // while it writes the archive, so an archive written inside its own source is
+        // self-referential -- the bytes being packed change while they are packed, and the
+        // outcome depends on filesystem timing (a truncated archive, one that grows as it is
+        // read, or an IO error that looks like "the file ended early"). Refused up front.
+        // IllegalArgumentException is the family's stance for malformed input rather than a
+        // filesystem refusal: fileWriteBinary leaves a bad base64 payload as exactly this,
+        // untranslated, for the caller to name.
+        val srcPath = src.canonicalOrAbsolute()
+        val dstParentPath = dst.parentFile?.canonicalOrAbsolute().orEmpty()
+        if (dstParentPath == srcPath || dstParentPath.startsWith("$srcPath/")) {
+            throw IllegalArgumentException(
+                "destination is inside source: $destination under $source",
+            )
+        }
+        // The tree is walked before the archive is opened. Two reasons: a source that cannot
+        // be listed fails without leaving a half-written archive behind, and this is where the
+        // entry names are decided.
+        val entries = ArrayList<Pair<String, File>>()
+        if (src.isDirectory) {
+            // `includeRootDirectory` is the package's own flag, declared default true. With it
+            // the entries are prefixed by the source directory's name; without it they are
+            // relative to the source, which is what the packer needs -- operit_editor.js:2870
+            // stages a filtered copy precisely so that its CONTENTS become the archive,
+            // :2873-2877 asserts the manifest is at the root of that staging directory, and
+            // the consumer looks for the manifest at the extraction root (:2810-2819). An
+            // absolute entry name would break the ToolPkg install path.
+            val prefix = if (includeRootDirectory) src.name + "/" else ""
+            if (includeRootDirectory) entries.add(prefix to src)
+            collectZipEntries(src, prefix, entries)
+        } else {
+            // A file source has no directory to keep: the schema scopes the flag to "when
+            // zipping a directory", so it is ignored and the entry is the file's own name.
+            entries.add(src.name to src)
+        }
+        dst.parentFile?.mkdirs()
+        try {
+            ZipOutputStream(BufferedOutputStream(FileOutputStream(dst))).use { zip ->
+                for ((name, file) in entries) {
+                    zip.putNextEntry(ZipEntry(name))
+                    // An explicit entry, ending in "/", is how an empty directory survives the
+                    // round trip; leaving it out would make it vanish on extraction.
+                    if (!file.isDirectory) {
+                        FileInputStream(file).use { input -> input.copyTo(zip) }
+                    }
+                    zip.closeEntry()
+                }
+            }
+        } catch (t: IOException) {
+            // The archive is the damaged side on every failure past this point, so the message
+            // names it. EIO is the family's code for a filesystem refusal; the wording is
+            // specific to this operation rather than reusing the copy round's, which would
+            // describe a different one.
+            throw IOException("EIO: cannot write archive: ${dst.path}: ${t.message}", t)
+        }
+        // {} : the only caller discards it (operit_editor.js:2879) and the wrapper only tests
+        // `!!result` (extended_file_tools.js:109).
+        return JSONObject()
+    }
+
+    /**
+     * Depth-first collection of [source]'s entries: relative names with `/` separators,
+     * directories included (with a trailing `/`) so that empty ones survive.
+     *
+     * Siblings are sorted by name. The order is not part of what the archive promises, but a
+     * stable one makes a round trip readable and a failure reproducible.
+     */
+    private fun collectZipEntries(source: File, prefix: String, out: MutableList<Pair<String, File>>) {
+        val children = source.listFiles()
+            ?: throw IOException("EIO: cannot list directory: ${source.path}")
+        for (child in children.sortedBy { it.name }) {
+            val name = prefix + child.name
+            if (child.isDirectory) {
+                out.add("$name/" to child)
+                collectZipEntries(child, "$name/", out)
+            } else {
+                out.add(name to child)
+            }
+        }
     }
 
     // ----------------------------------------------------------------- storage

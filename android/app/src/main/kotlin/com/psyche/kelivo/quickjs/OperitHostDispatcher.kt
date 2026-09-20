@@ -196,6 +196,25 @@ class OperitHostDispatcher(
                         a.optString(1),
                     ).toString()
                 }
+                "Tools.Files.zip" -> {
+                    // args[2] would be `environment`; deliberately not read, as in the rest of
+                    // this family -- one host, one namespace, nothing to route on.
+                    //
+                    // args[3] is `include_root_directory`, and this is the ONE boolean in the
+                    // family whose declared default is true (extended_file_tools.js:59), so it
+                    // cannot be read with optBoolean: org.json answers false for a missing or
+                    // null argument and would silently invert the documented behaviour.
+                    // isNull(3) is true both for a null and for an index that is not there at
+                    // all, which is what the wrapper sends when the caller omits the parameter
+                    // (`params.include_root_directory` is then undefined and drops out of the
+                    // array) -- so one test covers both shapes.
+                    val a = args ?: JSONArray()
+                    host.fileZip(
+                        a.optString(0),
+                        a.optString(1),
+                        a.isNull(3) || a.optBoolean(3),
+                    ).toString()
+                }
                 else -> fallback?.invoke(method, argsJson) ?: notSupported(method)
             }
         } catch (t: Throwable) {
@@ -210,9 +229,9 @@ class OperitHostDispatcher(
          * Methods that surface a failure as a JS throw instead of an error object.
          *
          * This started with Files.deleteFile and now includes Files.readBinary,
-         * Files.writeBinary, Files.read, Files.list, Files.info, Files.copy and
-         * Files.move. The Files family convention is: file operations that touch
-         * the real filesystem
+         * Files.writeBinary, Files.read, Files.list, Files.info, Files.copy,
+         * Files.move and Files.zip. The Files family convention is: file
+         * operations that touch the real filesystem
          * throw on failure, because (a) callers wrap them in try/catch and expect the
          * throw, and (b) returning an error object degrades the failure into a
          * meaningless placeholder at the call site (contentBase64 empty / undefined.length).
@@ -229,6 +248,7 @@ class OperitHostDispatcher(
             "Tools.Files.info",
             "Tools.Files.copy",
             "Tools.Files.move",
+            "Tools.Files.zip",
         )
     }
 

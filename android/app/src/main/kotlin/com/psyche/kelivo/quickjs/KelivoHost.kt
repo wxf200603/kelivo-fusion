@@ -357,4 +357,58 @@ interface KelivoHost {
      * EISDIR; a filesystem refusal -> EIO, with the message naming the incomplete side.
      */
     fun fileMove(source: String, destination: String): JSONObject
+
+    /**
+     * Writes the contents of [source] into a ZIP archive at [destination].
+     *
+     * On success returns **an empty object**, {} . The only real call site discards it
+     * (operit_editor.js:2879 is a bare `await`) and the package wrapper only tests
+     * `!!result` (extended_file_tools.js:109), so no field is invented here.
+     *
+     * **What the archive promises.** A standard ZIP: entries are deflated, their names
+     * are relative paths with `/` separators, a directory entry ends in `/`, and the
+     * order of entries is not promised (it is a stable depth-first walk with siblings
+     * sorted by name, which is convenient to read but not part of the contract). The
+     * compression level, zip64, timestamps and external attributes are **not**
+     * promised: two of the three consumers cannot be read from here -- the platform's
+     * ToolPkg installer, and whatever unzips the archive on a desktop -- so the
+     * promise is kept to the smallest set they can all rely on.
+     *
+     * **Recursive by definition**: the package declares no `recursive` parameter, so
+     * a directory is always packed whole, empty subdirectories included (they are
+     * written as their own entries; without that they would not exist after
+     * unzipping).
+     *
+     * [includeRootDirectory] mirrors the package's own flag, whose declared default
+     * is **true** (extended_file_tools.js:59, "keep the source directory name as the
+     * top-level folder"):
+     *   - `true`: entries are prefixed with [source]'s directory name, so the archive
+     *     contains one top-level folder;
+     *   - `false`: entry names are relative to [source], so its contents become the
+     *     archive. This is the shape the only caller needs, and the reason is on the
+     *     record: operit_editor.js:2870 stages a filtered copy of the package "so the
+     *     whole directory is not packed into the toolpkg", :2873-2877 requires the
+     *     manifest to be at the root of that staging directory before zipping, and the
+     *     consumer unzips the `.toolpkg` and looks for the manifest at the extraction
+     *     root (:2810-2819). An absolute entry name would break that path outright.
+     *
+     * A **file** source ignores [includeRootDirectory] -- the package scopes the flag
+     * to directories -- and produces a single entry named after the file.
+     *
+     * No workspace root, no path binding, no containment check: both paths are the
+     * caller's absolute paths, exactly as [fileCopy] / [fileMove] treat theirs. The
+     * destination's missing parent directories **are** created, the same stance as
+     * [fileWrite] and [fileWriteBinary].
+     *
+     * `environment` is not read: extended_file_tools.js:59 declares it and this host
+     * serves one namespace, so there is nothing to route on.
+     *
+     * Throws on failure: missing source -> ENOENT; a destination **inside** the source
+     * -> IllegalArgumentException (the archive would be packed from bytes that change
+     * while they are packed, so it is refused rather than left to filesystem timing);
+     * an unlistable source or an archive that cannot be written -> EIO. A destination
+     * equal to the source is **not** guarded -- no caller produces that shape, and the
+     * guard above is the one the round asked for.
+     */
+    fun fileZip(source: String, destination: String, includeRootDirectory: Boolean): JSONObject
 }
