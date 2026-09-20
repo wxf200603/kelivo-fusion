@@ -102,4 +102,35 @@ interface KelivoHost {
      * payload limit has not been verified; if one exists, this doc must be updated.
      */
     fun fileReadBinary(path: String): JSONObject
+
+    /**
+     * Writes [base64] (decoded) to [path], overwriting it.
+     *
+     * On success returns {"successful": true, "details": "<n> bytes written"}.
+     * On failure throws (ENOENT / EISDIR / EACCES / IllegalArgumentException for
+     * malformed base64 / IOException for write errors).
+     *
+     * Callers read .successful only on the success path — they must not rely on
+     * .details being meaningful when successful: the two draw wrappers read
+     * .details only when !successful, and this method never returns !successful
+     * (it throws instead). The field exists so a caller that still does
+     * `if (!r.successful) throw ...` does not mis-fire on the success path.
+     *
+     * Deliberately not workspace-scoped: no workspace root, no path binding and no
+     * containment check. [path] is the caller's absolute path, exactly as
+     * [fileMkdir] / [fileWrite] / [fileExists] / [fileDelete] / [fileReadBinary]
+     * treat theirs. There is no `environment` parameter to read, and nothing to
+     * pretend to route on.
+     *
+     * [base64] is bare base64: no `data:` prefix and no whitespace. Each call site
+     * normalises its own input first (minimax_draw.js:373, and the same helper in
+     * openai_draw.js), so a prefixed payload is not stripped here - the strict
+     * decoder rejects it loudly instead of writing half-decoded bytes.
+     *
+     * Parent directories are created when missing (same as [fileWrite]), the write
+     * is a non-atomic overwrite (no temp file + rename), and an empty [base64]
+     * writes a zero-byte file rather than failing: "no bytes" is not "cannot
+     * write", the same way an empty file is a successful read in [fileReadBinary].
+     */
+    fun fileWriteBinary(path: String, base64: String): JSONObject
 }

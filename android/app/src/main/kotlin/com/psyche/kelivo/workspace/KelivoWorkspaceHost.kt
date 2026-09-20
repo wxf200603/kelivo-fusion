@@ -955,6 +955,29 @@ class KelivoWorkspaceHost(
             .put("size", bytes.size.toLong())
     }
 
+    override fun fileWriteBinary(path: String, base64: String): JSONObject {
+        val target = File(path)
+        // Same zero-validation stance as fileMkdir / fileWrite / fileExists / fileDelete /
+        // fileReadBinary: `path` is the caller's absolute path, and there is no workspace
+        // root to check it against. A directory is caught before anything is decoded, so
+        // EISDIR never depends on the payload being valid.
+        if (target.isDirectory) {
+            throw IOException("EISDIR: is a directory: $path")
+        }
+        // The strict (basic) decoder on purpose: the MIME decoder silently ignores
+        // characters outside the alphabet, which would write damaged bytes to disk and
+        // report success. Malformed input leaves here as IllegalArgumentException,
+        // untranslated - the callers name it in their own failure message.
+        val bytes = java.util.Base64.getDecoder().decode(base64)
+        target.parentFile?.mkdirs()
+        target.writeBytes(bytes)
+        // Not void: both draw packages do `if (!writeResult.successful)`, so `undefined`
+        // would read as a failure on the success path.
+        return JSONObject()
+            .put("successful", true)
+            .put("details", "${bytes.size} bytes written")
+    }
+
     // ----------------------------------------------------------------- storage
 
     /**

@@ -119,6 +119,17 @@ class OperitHostDispatcher(
                     // the path reaches File(path) exactly as it does for every other Files method.
                     host.fileReadBinary(args?.optString(0).orEmpty()).toString()
                 }
+                "Tools.Files.writeBinary" -> {
+                    // args[2] would be `environment`; it is deliberately not read, for the same
+                    // reason as deleteFile and readBinary above: the dispatcher serves a single
+                    // host and KelivoHost.fileWriteBinary() takes no environment. No workspace
+                    // root and no path binding either - the path reaches File(path) exactly as
+                    // it does for every other Files method.
+                    host.fileWriteBinary(
+                        args?.optString(0).orEmpty(),
+                        args?.optString(1).orEmpty(),
+                    ).toString()
+                }
                 else -> fallback?.invoke(method, argsJson) ?: notSupported(method)
             }
         } catch (t: Throwable) {
@@ -132,7 +143,8 @@ class OperitHostDispatcher(
         /**
          * Methods that surface a failure as a JS throw instead of an error object.
          *
-         * This started with Files.deleteFile and now includes Files.readBinary. The
+         * This started with Files.deleteFile and now includes Files.readBinary and
+         * Files.writeBinary. The
          * Files family convention is: file operations that touch the real filesystem
          * throw on failure, because (a) callers wrap them in try/catch and expect the
          * throw, and (b) returning an error object degrades the failure into a
@@ -144,6 +156,7 @@ class OperitHostDispatcher(
         private val throwingMethods = setOf(
             "Tools.Files.deleteFile",
             "Tools.Files.readBinary",
+            "Tools.Files.writeBinary",
         )
     }
 
