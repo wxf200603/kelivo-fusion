@@ -372,7 +372,7 @@ class OperitJsRuntime(
     /** Runs each `<pkg>:<tool> {json}` line in [spec] through [callTool]. */
     private fun runCallSelfTest(spec: String) {
         for (line in spec.lines()) {
-            val l = line.trim()
+            val l = line.trim().removePrefix(CALL_PREFIX).trim()
             if (l.isEmpty()) continue
             val i = l.indexOf(' ')
             val target = (if (i < 0) l else l.substring(0, i)).trim()
