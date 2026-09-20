@@ -932,6 +932,29 @@ class KelivoWorkspaceHost(
         }
     }
 
+    override fun fileReadBinary(path: String): JSONObject {
+        val target = File(path)
+        // Same zero-validation stance as fileMkdir / fileWrite / fileExists /
+        // fileDelete: `path` is the caller's absolute path, and there is no workspace
+        // root to check it against. A directory is caught before `isFile`, because a
+        // directory is not a file either.
+        if (target.isDirectory) {
+            throw IOException("EISDIR: is a directory: $path")
+        }
+        if (!target.isFile) {
+            throw FileNotFoundException("ENOENT: no such file or directory: $path")
+        }
+        val bytes = target.readBytes()
+        // Single-line is part of the contract, not a detail, and java.util.Base64's
+        // basic encoder is what guarantees it: the call sites build
+        // `data:<mime>;base64,<contentBase64>` by hand, so a line break in the payload
+        // would silently corrupt the data URL. Same class the repo already uses for
+        // certificates (RootfsCertificates.kt:7).
+        return JSONObject()
+            .put("contentBase64", java.util.Base64.getEncoder().encodeToString(bytes))
+            .put("size", bytes.size.toLong())
+    }
+
     // ----------------------------------------------------------------- storage
 
     /**

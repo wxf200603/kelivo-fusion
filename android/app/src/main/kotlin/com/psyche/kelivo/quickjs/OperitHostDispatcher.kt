@@ -111,11 +111,19 @@ class OperitHostDispatcher(
                     null
                 }
 
+                "Tools.Files.readBinary" -> {
+                    // args[1] would be `environment`; it is deliberately not read, for the same
+                    // reason as deleteFile above: the dispatcher serves a single host and
+                    // KelivoHost.fileReadBinary() takes no environment. Reading it here would be
+                    // pretending we route on it. No workspace root and no path binding either -
+                    // the path reaches File(path) exactly as it does for every other Files method.
+                    host.fileReadBinary(args?.optString(0).orEmpty()).toString()
+                }
                 else -> fallback?.invoke(method, argsJson) ?: notSupported(method)
             }
         } catch (t: Throwable) {
-            // Declared in THROWING_METHODS; every other method keeps returning an object.
-            if (method in THROWING_METHODS) throw t
+            // Declared in throwingMethods; every other method keeps returning an object.
+            if (method in throwingMethods) throw t
             errorJson(method, t)
         }
     }
@@ -124,11 +132,19 @@ class OperitHostDispatcher(
         /**
          * Methods that surface a failure as a JS throw instead of an error object.
          *
-         * Files.deleteFile is the first: the packages call it inside try/catch
-         * (openai_draw.js:207) and expect the throw, and the native layer converts a
-         * Kotlin exception into `JS_ThrowInternalError` (quickjs_jni.cpp:621).
+         * This started with Files.deleteFile and now includes Files.readBinary. The
+         * Files family convention is: file operations that touch the real filesystem
+         * throw on failure, because (a) callers wrap them in try/catch and expect the
+         * throw, and (b) returning an error object degrades the failure into a
+         * meaningless placeholder at the call site (contentBase64 empty / undefined.length).
+         *
+         * Exceptions will be individual methods whose callers genuinely want an error
+         * object to inspect — not the default.
          */
-        val THROWING_METHODS = setOf("Tools.Files.deleteFile")
+        private val throwingMethods = setOf(
+            "Tools.Files.deleteFile",
+            "Tools.Files.readBinary",
+        )
     }
 
     private fun notSupported(method: String): String = JSONObject()
