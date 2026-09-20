@@ -313,4 +313,48 @@ interface KelivoHost {
      * [fileReadBinary], a copy has no reason to hold the payload in memory.
      */
     fun fileCopy(source: String, destination: String, recursive: Boolean): JSONObject
+
+    /**
+     * Moves [source] to [destination]. Recursive by definition: the signature offers no
+     * non-recursive reading, so a directory always moves whole.
+     *
+     * On success returns **an empty object**, {} , and that {} means exactly one thing:
+     * **the file is at the destination and the source is gone. It never means "we
+     * tried".** The only caller in the tree depends on precisely that. daily_life.js:1048
+     * moves a screenshot out of the app's own storage into a user-given path and then logs
+     * "截图已保存到: <path>" (:1050) without checking the result -- that line is true only
+     * if this returns {} once the bytes are actually at [destination].
+     *
+     * **Across devices is the ordinary case here, not the corner.** The screenshot lands
+     * in the app's own directory (daily_life.js:1039) and the destination is usually under
+     * /sdcard, i.e. across the FUSE/ext4 boundary, where rename(2) cannot work at all. So
+     * the implementation renames when it can and falls back to copy-then-delete when it
+     * cannot. That fallback is **not atomic**: between its two halves both copies exist. A
+     * failure is reported with the side it damaged rather than rolled back into a lie --
+     * an incomplete copy removes the destination it wrote (unless that destination was
+     * already a directory, which may hold entries the source never carried); a failed
+     * source deletion leaves a complete destination beside a possibly partial source.
+     *
+     * No workspace root, no path binding, no containment check: both paths are the
+     * caller's absolute paths, exactly as [fileCopy] / [fileDelete] treat theirs. A file
+     * onto an existing directory, or a directory onto an existing file, is EISDIR and is
+     * refused before anything is written.
+     *
+     * `environment` is not read, and **cross-environment moves are not implemented**:
+     * extended_file_tools.js:30 declares the argument and this host serves one namespace,
+     * so there is nothing to route on. The package does not advertise the capability the
+     * way copy_file does, so the gap is smaller than [fileCopy]'s -- but it is a gap, and
+     * it is recorded as one rather than quietly ignored.
+     *
+     * Moving onto an existing directory **merges into it rather than clearing it**:
+     * entries the source does not carry survive. Both that and one more asymmetry are
+     * inherited from rename(2) rather than chosen here -- a rename onto a non-empty
+     * directory fails, so the merge can only happen on the copy route, and the copy route
+     * also creates missing parents (copyFileTo calls `parentFile?.mkdirs()`) where the
+     * rename route does not.
+     *
+     * Throws on failure: missing source -> ENOENT; file onto directory or the reverse ->
+     * EISDIR; a filesystem refusal -> EIO, with the message naming the incomplete side.
+     */
+    fun fileMove(source: String, destination: String): JSONObject
 }

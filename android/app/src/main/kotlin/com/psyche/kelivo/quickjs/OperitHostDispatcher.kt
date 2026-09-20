@@ -183,6 +183,19 @@ class OperitHostDispatcher(
                         a.optBoolean(2),
                     ).toString()
                 }
+                "Tools.Files.move" -> {
+                    // args[2] would be `environment`; deliberately not read, for the same
+                    // reason as the rest of this family - one host, one namespace, nothing to
+                    // route on. Note this package does NOT advertise a cross-environment move
+                    // the way copy_file advertises a cross-environment copy
+                    // (extended_file_tools.js:25-31), so nothing here promises what the host
+                    // cannot do; the gap is only that the argument is ignored.
+                    val a = args ?: JSONArray()
+                    host.fileMove(
+                        a.optString(0),
+                        a.optString(1),
+                    ).toString()
+                }
                 else -> fallback?.invoke(method, argsJson) ?: notSupported(method)
             }
         } catch (t: Throwable) {
@@ -197,8 +210,9 @@ class OperitHostDispatcher(
          * Methods that surface a failure as a JS throw instead of an error object.
          *
          * This started with Files.deleteFile and now includes Files.readBinary,
-         * Files.writeBinary, Files.read, Files.list, Files.info and Files.copy. The
-         * Files family convention is: file operations that touch the real filesystem
+         * Files.writeBinary, Files.read, Files.list, Files.info, Files.copy and
+         * Files.move. The Files family convention is: file operations that touch
+         * the real filesystem
          * throw on failure, because (a) callers wrap them in try/catch and expect the
          * throw, and (b) returning an error object degrades the failure into a
          * meaningless placeholder at the call site (contentBase64 empty / undefined.length).
@@ -214,6 +228,7 @@ class OperitHostDispatcher(
             "Tools.Files.list",
             "Tools.Files.info",
             "Tools.Files.copy",
+            "Tools.Files.move",
         )
     }
 

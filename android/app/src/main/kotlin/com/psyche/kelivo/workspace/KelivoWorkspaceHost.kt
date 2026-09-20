@@ -1131,6 +1131,84 @@ class KelivoWorkspaceHost(
     private fun File.canonicalOrAbsolute(): String =
         runCatching { canonicalPath }.getOrDefault(absolutePath)
 
+    override fun fileMove(source: String, destination: String): JSONObject {
+        val src = File(source)
+        val dst = File(destination)
+        // Same zero-validation stance as every other Files method here: both paths are the
+        // caller's absolute paths, and there is no workspace root to check them against.
+        if (!src.exists()) {
+            throw FileNotFoundException("ENOENT: no such file or directory: $source")
+        }
+        // Internal guard, not part of the KDoc: no caller can see this, and without it the
+        // fallback is a suicide path. copyFileTo(src, src) opens the source for write, so the
+        // source is truncated before a byte of it is read, and the deleteTree that follows
+        // removes the only copy. A rename onto the same path is a no-op, so returning {}
+        // without touching the disk is the whole job.
+        if (src.canonicalOrAbsolute() == dst.canonicalOrAbsolute()) {
+            return JSONObject()
+        }
+        // Both shapes are refused by rename(2) and by the copy helpers alike, so refusing them
+        // here costs nothing and buys the honesty of the message below: past this point,
+        // "copy incomplete" means something may have been written.
+        if (src.isDirectory && dst.exists() && !dst.isDirectory) {
+            throw IOException("EISDIR: destination is a file, not a directory: ${dst.path}")
+        }
+        if (!src.isDirectory && dst.isDirectory) {
+            throw IOException("EISDIR: destination is a directory: ${dst.path}")
+        }
+        if (src.renameTo(dst)) {
+            return JSONObject()
+        }
+        // renameTo answers true or false and nothing else: java.io.File discards the errno, so
+        // why it failed is not knowable here. Two ordinary causes are a filesystem boundary
+        // (/sdcard is FUSE, /data is ext4) and a non-empty destination directory (ENOTEMPTY),
+        // and there is no third signal to route on - nor would a narrower trigger help, since
+        // the merge that the second cause needs can only happen on this route anyway. Every
+        // failure therefore takes one route, copy then delete, which is not atomic: between
+        // the halves both copies exist. The halves fail differently, so they report
+        // differently.
+        val dstWasDirectory = dst.exists() && dst.isDirectory
+        try {
+            if (src.isDirectory) copyTree(src, dst) else copyFileTo(src, dst)
+        } catch (t: Throwable) {
+            // Remove what the copy wrote. A destination that was already a directory is left
+            // alone instead: it can hold entries the source never carried, and deleting those
+            // would be a worse outcome than the one being reported. Everything else - a
+            // destination we created, or a file that was already truncated when the write
+            // began - is removed rather than left behind looking complete.
+            val removed = !dstWasDirectory && deleteIfPresent(dst)
+            throw IOException(
+                "EIO: rename-path failed, copy incomplete (" +
+                    (if (removed) "destination removed" else "destination not removed") +
+                    "): ${t.message}",
+                t,
+            )
+        }
+        try {
+            deleteTree(src)
+        } catch (t: Throwable) {
+            // The destination is complete and is deliberately NOT rolled back: by this point
+            // the source may already be partially removed, so deleting the destination would
+            // destroy the only complete copy left. The message names that side.
+            throw IOException(
+                "EIO: rename-path failed, source removal incomplete " +
+                    "(source may be partially removed, destination is complete): ${t.message}",
+                t,
+            )
+        }
+        // {} : the file is at the destination and the source is gone.
+        return JSONObject()
+    }
+
+    /** Removes [target] if it is there, and answers whether anything was removed. */
+    private fun deleteIfPresent(target: File): Boolean {
+        if (!target.exists()) return false
+        return runCatching {
+            deleteTree(target)
+            true
+        }.getOrDefault(false)
+    }
+
     // ----------------------------------------------------------------- storage
 
     /**
