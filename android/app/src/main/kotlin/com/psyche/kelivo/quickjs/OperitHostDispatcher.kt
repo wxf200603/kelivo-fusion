@@ -196,6 +196,22 @@ class OperitHostDispatcher(
                         a.optString(1),
                     ).toString()
                 }
+                "Tools.Files.unzip" -> {
+                    // args[2] would be `environment`; deliberately not read, as in the rest of
+                    // this family -- one host, one namespace, nothing to route on.
+                    //
+                    // Note the shape: unzip_files(source, destination, environment)
+                    // (extended_file_tools.js:112) has NO boolean, so unlike Files.zip there is
+                    // no index to get wrong here. The zip round learned that lesson the hard
+                    // way -- a marker that leaves the environment slot out moves every later
+                    // argument one index left, and the host then reads the default instead of
+                    // the caller's value.
+                    val a = args ?: JSONArray()
+                    host.fileUnzip(
+                        a.optString(0),
+                        a.optString(1),
+                    ).toString()
+                }
                 "Tools.Files.zip" -> {
                     // args[2] would be `environment`; deliberately not read, as in the rest of
                     // this family -- one host, one namespace, nothing to route on.
@@ -249,6 +265,7 @@ class OperitHostDispatcher(
             "Tools.Files.copy",
             "Tools.Files.move",
             "Tools.Files.zip",
+            "Tools.Files.unzip",
         )
     }
 

@@ -15,6 +15,7 @@ import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
@@ -22,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 /**
@@ -1287,6 +1289,164 @@ class KelivoWorkspaceHost(
      * Siblings are sorted by name. The order is not part of what the archive promises, but a
      * stable one makes a round trip readable and a failure reproducible.
      */
+    override fun fileUnzip(source: String, destination: String): JSONObject {
+        val src = File(source)
+        val dst = File(destination)
+        // Same zero-validation stance as every other Files method here: both paths are the
+        // caller's absolute paths, and there is no workspace root to check them against.
+        if (!src.exists()) {
+            throw FileNotFoundException("ENOENT: no such file or directory: $source")
+        }
+        // The reverse of fileZip's guard, and deliberately not its code. There the source tree
+        // contains the archive being written; here the destination contains the archive being
+        // read, so the predicate looks the other way: refuse when the source lies inside the
+        // destination. Reading a file while writing files around it is self-referential in
+        // exactly the same way, and the outcome would depend on filesystem timing.
+        val srcPath = src.canonicalOrAbsolute()
+        val dstPath = dst.canonicalOrAbsolute()
+        if (srcPath == dstPath || srcPath.startsWith("$dstPath/")) {
+            throw IllegalArgumentException(
+                "source is inside destination: $source under $destination",
+            )
+        }
+        // A destination that exists as a file cannot receive a tree. The sentence is
+        // fileMove's, for the same shape -- the family names a wrongly-typed destination with
+        // EISDIR and is not going to invent a second spelling for it.
+        if (dst.exists() && !dst.isDirectory) {
+            throw IllegalArgumentException(
+                "EISDIR: destination is a file, not a directory: $destination",
+            )
+        }
+        // The entry table is read BEFORE anything is created, so an unsafe name refuses the
+        // whole call and leaves the destination untouched. That is the one place this
+        // implementation is stricter than the device's own unzip, which refuses per entry and
+        // therefore leaves the members it already wrote (probed: benign / hostile / benign
+        // extracts the first member and then exits 1). An unreadable entry table is refused
+        // too: no table, no extraction.
+        val table = readZipEntryTable(src)
+            ?: throw IllegalArgumentException("unsafe entry name: <unreadable entry table> in $source")
+        for ((name, mode) in table) {
+            if (isUnsafeZipEntry(name, mode)) {
+                throw IllegalArgumentException("unsafe entry name: $name")
+            }
+        }
+        dst.mkdirs()
+        try {
+            ZipFile(src).use { zip ->
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    val target = File(dst, entry.name)
+                    if (entry.isDirectory) {
+                        target.mkdirs()
+                        continue
+                    }
+                    target.parentFile?.mkdirs()
+                    zip.getInputStream(entry).use { input ->
+                        BufferedOutputStream(FileOutputStream(target)).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            // Names the damaged side, as the rest of the family does: the source is intact and
+            // may be re-read, the destination may now hold a partial extraction.
+            throw IOException("EIO: cannot extract: $destination: ${t.message}", t)
+        }
+        // An empty archive lands here with the destination created and nothing in it. Empty
+        // input is not an error -- the same reading fileReadBinary and fileWriteBinary take.
+        return JSONObject()
+    }
+
+    /**
+     * Reads the central directory and returns (name, unix mode) for every entry, or null when
+     * the table cannot be read.
+     *
+     * java.util.zip exposes neither the external attributes nor the unix mode, and the mode is
+     * the only way to tell a symbolic-link entry from a regular file -- `ZipEntry.isDirectory`
+     * cannot, and an entry that is a link would otherwise be extracted as a small regular file
+     * containing its target. So the table is walked at byte level:
+     *
+     *   0x02014b50  central file header signature
+     *   offset 28   file name length        (2 bytes)
+     *   offset 30   extra field length      (2 bytes)
+     *   offset 32   file comment length     (2 bytes)
+     *   offset 38   external file attributes(4 bytes; st_mode in the high 16 bits for unix)
+     *   total       46 + name + extra + comment
+     *
+     * The end-of-central-directory record (0x06054b50) is searched from the end of the file
+     * over the largest comment a ZIP may carry. Anything unexpected -- a missing record, a
+     * header that runs past the end, a name that is not valid UTF-8 -- answers null, and the
+     * caller refuses: a guessed table would be a fail-open.
+     */
+    private fun readZipEntryTable(zipFile: File): List<Pair<String, Int>>? {
+        val out = ArrayList<Pair<String, Int>>()
+        RandomAccessFile(zipFile, "r").use { raf ->
+            val length = raf.length()
+            // 22 is the smallest possible end-of-central-directory record; a file shorter than
+            // that cannot be a ZIP at all. The search window is that record plus the largest
+            // comment a ZIP may carry (65535). Both are spelled out here rather than parked in
+            // the class's companion object: this class already has one and Kotlin allows only
+            // one, and a private constant used twice is not worth a second file-level home.
+            if (length < 22) return null
+            val window = minOf(length, 65535L + 22L).toInt()
+            val buffer = ByteArray(window)
+            raf.seek(length - window)
+            raf.readFully(buffer)
+            var eocd = -1
+            var i = window - 22
+            while (i >= 0) {
+                if (buffer[i] == 0x50.toByte() && buffer[i + 1] == 0x4b.toByte() &&
+                    buffer[i + 2] == 0x05.toByte() && buffer[i + 3] == 0x06.toByte()
+                ) {
+                    eocd = i
+                    break
+                }
+                i--
+            }
+            if (eocd < 0) return null
+            val total = le16(buffer, eocd + 10)
+            var offset = le32(buffer, eocd + 16).toLong()
+            if (offset < 0 || offset >= length) return null
+            repeat(total) {
+                val header = ByteArray(46)
+                raf.seek(offset)
+                if (raf.read(header) != 46) return null
+                if (le32(header, 0) != 0x02014b50) return null
+                val nameLength = le16(header, 28)
+                val extraLength = le16(header, 30)
+                val commentLength = le16(header, 32)
+                val attributes = le32(header, 38)
+                val nameBytes = ByteArray(nameLength)
+                if (raf.read(nameBytes) != nameLength) return null
+                val name = String(nameBytes, StandardCharsets.UTF_8)
+                // A name that is not valid UTF-8 comes back with replacement characters, and a
+                // replacement character is itself a reason to refuse rather than to guess.
+                if (name.contains('\uFFFD')) return null
+                out.add(name to (attributes ushr 16))
+                offset += 46L + nameLength + extraLength + commentLength
+                if (offset > length) return null
+            }
+        }
+        return out
+    }
+
+    private fun isUnsafeZipEntry(name: String, mode: Int): Boolean {
+        if (name.isEmpty()) return true
+        if (name.startsWith("/")) return true
+        if (name.split('/').any { it == ".." }) return true
+        // 0xA000 is S_IFLNK. The mode is only meaningful when the archive came from a unix
+        // writer; a DOS-writer archive carries 0 there and is judged on its name alone.
+        return (mode and 0xF000) == 0xA000
+    }
+
+    private fun le16(bytes: ByteArray, at: Int): Int =
+        (bytes[at].toInt() and 0xFF) or ((bytes[at + 1].toInt() and 0xFF) shl 8)
+
+    private fun le32(bytes: ByteArray, at: Int): Int =
+        le16(bytes, at) or (le16(bytes, at + 2) shl 16)
+
     private fun collectZipEntries(source: File, prefix: String, out: MutableList<Pair<String, File>>) {
         val children = source.listFiles()
             ?: throw IOException("EIO: cannot list directory: ${source.path}")

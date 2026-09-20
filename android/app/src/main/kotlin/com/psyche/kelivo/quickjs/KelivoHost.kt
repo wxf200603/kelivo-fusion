@@ -421,4 +421,49 @@ interface KelivoHost {
      * into a separate temp build directory.
      */
     fun fileZip(source: String, destination: String, includeRootDirectory: Boolean): JSONObject
+
+    /**
+     * Extracts a ZIP archive into [destination], answering `{}`.
+     *
+     * Signature and answer are the measured ones: the only call site
+     * (`operit_editor.js:2810`, the `.toolpkg` install path) discards the result, and the
+     * package wrapper only tests `!!result` (`extended_file_tools.js:111-113`), so no field is
+     * invented for either of them to ignore.
+     *
+     * **Nothing is written when an entry name is unsafe.** The entry table is read first and
+     * every name is checked -- a `..` segment, an absolute name, or a symbolic-link entry --
+     * and the call is refused with `IllegalArgumentException("unsafe entry name: <name>")`
+     * before the destination is touched at all. The device's own `/system/bin/unzip` refuses
+     * those names too, but only as it reaches them, so an archive with a benign member first
+     * leaves that member behind and drops what follows (probed: a benign / hostile / benign
+     * archive extracts the first member, then exits 1). The archive here is a seekable file,
+     * so this implementation can be stricter than the reference tool and does not leave a
+     * partial destination behind. A symbolic-link entry belongs to the same family as `..`:
+     * a `.toolpkg` has no legitimate use for one, and a link target is the same escape wearing
+     * different clothes.
+     *
+     * [destination] is created if it does not exist (`mkdirs`), which is what the model-facing
+     * path needs: `extended_file_tools.js:112` passes the caller's path through untested,
+     * while the one real caller creates the directory itself one line before calling
+     * (`operit_editor.js:2809`). A [destination] that exists as a **file** is refused with
+     * `IllegalArgumentException("EISDIR: destination is a file, not a directory: <dst>")`,
+     * which is [fileMove]'s sentence for the same shape.
+     *
+     * **A source inside its own destination is refused**, with
+     * `IllegalArgumentException("source is inside destination: <src> under <dst>")`. That is
+     * the reverse of [fileZip]'s guard rather than a copy of it: there the packed tree
+     * contains the archive, here the destination contains the archive being read, and reading
+     * a file while overwriting files around it is the same self-reference in the other
+     * direction.
+     *
+     * An **empty archive** is not an error: the destination is created and `{}` is answered,
+     * the same stance [fileReadBinary] and [fileWriteBinary] take on empty input.
+     *
+     * **Not promised:** permission bits, timestamps, zip64, encrypted archives, or any
+     * property of the extracted files beyond their contents. The only consumer that was read
+     * needs the manifest to appear at the extraction root (`operit_editor.js:2814`) and the
+     * main entry to exist under it (`:2820-2822`), so that is the contract; entry order,
+     * compression method and attributes are not.
+     */
+    fun fileUnzip(source: String, destination: String): JSONObject
 }
