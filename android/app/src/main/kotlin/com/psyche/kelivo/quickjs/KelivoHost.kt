@@ -466,4 +466,47 @@ interface KelivoHost {
      * compression method and attributes are not.
      */
     fun fileUnzip(source: String, destination: String): JSONObject
+
+    /**
+     * Downloads [url] to [destination], answering a `FileOperationData`-shaped object.
+     *
+     * **A failure is answered, not thrown.** The reference implementation returns
+     * `FileOperationData(operation = "download", path, successful = false, details)` on every
+     * failure path (`StandardFileSystemTools.kt:4326-4495`), and every in-repo caller branches
+     * on `successful` / reads `details` (`zhipu_draw.js:165-168` and eight siblings), so this
+     * member is deliberately **not** in the dispatcher's `throwingMethods` -- it sits with
+     * [fileRead] / [fileList] / [fileInfo], not with [fileDelete] / [fileWriteBinary]. The
+     * answered keys are `operation`, `env`, `path`, `successful`, `details`; the last two are
+     * the ones the JS reads.
+     *
+     * Only `http://` and `https://` are accepted; anything else is refused with the reference
+     * tool's own sentence (`"URL must start with http:// or https://"`). The parent directory of
+     * [destination] is created when missing and an existing file is overwritten -- neither more
+     * nor less than the reference tool. A [headers] object is applied as request properties, and
+     * a malformed one is ignored rather than refused (fail-open, matching `:4298-4312`).
+     *
+     * Implemented with `java.net.HttpURLConnection` and no new dependency: the Android module
+     * carries no HTTP client at all (0 hits for `HttpURLConnection` / `okhttp` / `retrofit` /
+     * `ktor` / `volley`), and the manifest already allows cleartext (`AndroidManifest.xml:5`
+     * INTERNET, `:50 usesCleartextTraffic="true"`).
+     *
+     * **Not implemented on purpose: the options overload.** `files.d.ts:242` also declares
+     * `download({ url?, visit_key?, link_number?, image_number?, destination, environment?,
+     * headers? })`; its `visit_key` / `link_number` / `image_number` form is backed upstream by a
+     * browser-visit cache (`StandardWebVisitTool.getCachedVisitResult`, `:4340`) that this host
+     * has no equivalent for, and nothing under `assets/operit_packages/` calls that form (0
+     * hits). It is therefore absent here **and said so**, rather than left as a form that looks
+     * usable and is not: a call with a blank url answers the reference tool's own sentence. This
+     * is a recorded gap -- see the download round's handoff note.
+     *
+     * **Not promised:** progress reporting, segmented download, retries, resume, size limits,
+     * timeout tuning, or any property of the bytes beyond "the response body was written to
+     * [destination]".
+     */
+    fun fileDownload(
+        url: String,
+        destination: String,
+        environment: String?,
+        headers: JSONObject?,
+    ): JSONObject
 }

@@ -212,6 +212,22 @@ class OperitHostDispatcher(
                         a.optString(1),
                     ).toString()
                 }
+                "Tools.Files.download" -> {
+                    // Positional form: download(url, destination, environment?, headers?).
+                    // `environment` is read only to skip a null slot -- one host, one namespace,
+                    // nothing to route on (same stance as Files.unzip above). `headers` arrives
+                    // as an object when the caller supplies one, and null otherwise.
+                    //
+                    // No index arithmetic to get wrong the way the zip round did: there is no
+                    // boolean between destination and environment here.
+                    val a = args ?: JSONArray()
+                    host.fileDownload(
+                        a.optString(0),
+                        a.optString(1),
+                        if (a.isNull(2)) null else a.optString(2),
+                        a.optJSONObject(3),
+                    ).toString()
+                }
                 "Tools.Files.zip" -> {
                     // args[2] would be `environment`; deliberately not read, as in the rest of
                     // this family -- one host, one namespace, nothing to route on.

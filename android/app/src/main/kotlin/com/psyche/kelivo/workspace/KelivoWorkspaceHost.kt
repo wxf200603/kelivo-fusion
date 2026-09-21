@@ -16,6 +16,8 @@ import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.RandomAccessFile
+import java.net.HttpURLConnection
+import java.net.URL
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
@@ -1446,6 +1448,108 @@ class KelivoWorkspaceHost(
 
     private fun le32(bytes: ByteArray, at: Int): Int =
         le16(bytes, at) or (le16(bytes, at + 2) shl 16)
+
+    override fun fileDownload(
+        url: String,
+        destination: String,
+        environment: String?,
+        headers: JSONObject?,
+    ): JSONObject {
+        // `environment` is deliberately not read (one host, one namespace), and `headers` is
+        // already a JSONObject by the time it arrives.
+        //
+        // Unlike every other Files method, this one ANSWERS a failure instead of throwing it.
+        // That is the measured contract, not a preference: the reference implementation returns
+        // FileOperationData(successful = false, details = ...) on every failure path
+        // (StandardFileSystemTools.kt:4326-4495), and all nine in-repo callers branch on
+        // `.successful` / read `.details` (zhipu_draw.js:165-168 and eight siblings).
+        if (url.isBlank()) {
+            // The options overload (visit_key + link_number/image_number) is not implemented
+            // (R3); a blank url therefore lands on the reference implementation's own sentence
+            // for "no url and no usable options object".
+            return downloadFailure(
+                destination,
+                "Either url or (visit_key + link_number/image_number) is required",
+            )
+        }
+        if (destination.isBlank()) {
+            return downloadFailure(destination, "URL and destination parameters are required")
+        }
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            return downloadFailure(destination, "URL must start with http:// or https://")
+        }
+        val dest = File(destination)
+        // Parent created when missing, as the reference tool does; an existing destination is
+        // overwritten (the reference tool has no guard for it either).
+        dest.parentFile?.let { if (!it.exists()) it.mkdirs() }
+        try {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 60_000
+            connection.instanceFollowRedirects = true
+            applyDownloadHeaders(connection, headers)
+            connection.requestMethod = "GET"
+            val code = connection.responseCode
+            if (code < 200 || code > 299) {
+                return downloadFailure(destination, "Error downloading file: HTTP $code")
+            }
+            connection.inputStream.use { input ->
+                FileOutputStream(dest).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        } catch (t: Throwable) {
+            // The damaged side is named the way the reference tool names it.
+            return downloadFailure(destination, "Error downloading file: ${t.message}")
+        }
+        if (!dest.exists()) {
+            return downloadFailure(destination, "Download completed but file was not created")
+        }
+        return JSONObject()
+            .put("operation", "download")
+            .put("env", "android")
+            .put("path", destination)
+            .put("successful", true)
+            .put(
+                "details",
+                "File downloaded successfully: $url -> $destination (file size: ${formatSize(dest.length())})",
+            )
+    }
+
+    /**
+     * Copies [headers] onto [connection], ignoring anything that cannot be read.
+     *
+     * The reference implementation parses the headers parameter inside a try/catch and falls
+     * back to an empty map when it cannot (`StandardFileSystemTools.kt:4298-4312`), so a
+     * malformed headers value is fail-open there and fail-open here: a request with fewer
+     * headers is still attempted rather than refused.
+     */
+    private fun applyDownloadHeaders(connection: HttpURLConnection, headers: JSONObject?) {
+        if (headers == null) return
+        try {
+            val keys = headers.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                connection.setRequestProperty(key, headers.getString(key))
+            }
+        } catch (_: Throwable) {
+            // Deliberately swallowed: see above. Whatever was copied before the bad entry stays.
+        }
+    }
+
+    private fun downloadFailure(path: String, details: String): JSONObject =
+        JSONObject()
+            .put("operation", "download")
+            .put("env", "android")
+            .put("path", path)
+            .put("successful", false)
+            .put("details", details)
+
+    private fun formatSize(bytes: Long): String = when {
+        bytes > 1024 * 1024 -> String.format("%.2f MB", bytes / (1024.0 * 1024.0))
+        bytes > 1024 -> String.format("%.2f KB", bytes / 1024.0)
+        else -> "$bytes bytes"
+    }
 
     private fun collectZipEntries(source: File, prefix: String, out: MutableList<Pair<String, File>>) {
         val children = source.listFiles()
