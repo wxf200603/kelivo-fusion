@@ -90,6 +90,34 @@ void main() {
       expect(applied.replacements, 2);
       expect(applied.updated, '    c\n    d\n    c\n    d\n');
     });
+
+    test('keeps the line endings of newText when it re-indents', () {
+      // The combination neither suite reaches: CRLF content, an oldText
+      // whose indentation is gone (so line_trimmed matches and the
+      // re-indent runs), and a CRLF newText. This port keeps the inserted
+      // text's own endings -- see the declaration on applyEdit.
+      // Normalizing them would leave a CRLF file with mixed endings, which
+      // is the defect this port refuses to copy.
+      const original =
+          'fun main() {\r\n    println("a")\r\n    println("b")\r\n}\r\n';
+      final result = applyEdit(
+        original: original,
+        oldText: 'println("a")\r\nprintln("b")',
+        newText: 'println("c")\r\nprintln("d")',
+      );
+      final applied = result as EditApplied;
+      expect(applied.strategy, EditStrategy.lineTrimmed);
+      expect(applied.replacements, 1);
+      expect(
+        applied.updated,
+        'fun main() {\r\n    println("c")\r\n    println("d")\r\n}\r\n',
+      );
+      // What the ported reindent would have produced instead:
+      expect(
+        applied.updated,
+        isNot('fun main() {\r\n    println("c")\n    println("d")\r\n}\r\n'),
+      );
+    });
   });
 
   group('blockAnchor', () {

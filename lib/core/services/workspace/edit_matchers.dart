@@ -67,6 +67,19 @@ String editAmbiguousMessage(int count, EditStrategy strategy) =>
     'add more surrounding context to make it unique, or set replace_all=true';
 
 /// Port of RikkaHub `TextReplacers.kt`: exact → line-trimmed → block-anchor.
+///
+/// Declared divergences from the ported source, pinned to `rikkahub/rikkahub`
+/// @ `94504b5cabeba59304e6343ca61fa43c181a7126`
+/// (`app/src/main/java/me/rerere/rikkahub/data/ai/tools/TextReplacers.kt`):
+///
+/// 1. Intentional: [newText] keeps the line endings it was given. Upstream's
+///    `reindent` goes through `String.lines()` and rejoins with
+///    `joinToString("\n")`, so a CRLF [newText] comes back as LF and a CRLF
+///    file ends up with mixed endings. Rewriting the endings of the text
+///    being inserted into a CRLF file is the defect, not the fix. The CRLF
+///    case in `test/core/services/workspace/edit_matchers_test.dart` covers
+///    it; the upstream suite cannot, because its CRLF case returns before
+///    `reindent` is reached.
 EditOutcome applyEdit({
   required String original,
   required String oldText,
@@ -243,6 +256,13 @@ String _indentOf(String line) {
   return line.substring(0, i);
 }
 
+/// Re-indents [text] to [newIndent], keeping [text]'s own line endings.
+///
+/// Intentional divergence from the ported `reindent` (see [applyEdit]):
+/// upstream splits with `String.lines()` and rejoins with `joinToString`,
+/// which rewrites CRLF to LF inside the inserted text. Here the split is on
+/// '\n' only, so a CR stays where it was. Do not "fix" this without the
+/// ruling: rewriting endings of text inserted into a CRLF file is the bug.
 String _reindent({
   required String text,
   required String oldIndent,
