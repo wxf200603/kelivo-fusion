@@ -74,8 +74,6 @@ D10="$OUT/c10"
 D11="$OUT/c11"
 
 C_ONE=one-file
-C_KEEP=KEEP
-C_EMPTY=EMPTY
 C_TOP=TOP
 
 need_root() {
@@ -210,9 +208,26 @@ setup() {
 
     # Expected contents, recorded as files rather than as strings in the judgements.
     printf '%s' "$C_ONE" > "$RD/.exp_one"
-    printf '%s' "$C_KEEP" > "$RD/.exp_keep"
-    printf '%s' "$C_EMPTY" > "$RD/.exp_empty"
     printf '%s' "$C_TOP" > "$RD/.exp_top"
+
+    # Case 2's two members carry a trailing newline inside the archive ("KEEP\n" = 5 bytes,
+    # "EMPTY\n" = 6 bytes). A shell variable cannot hold a trailing newline, so an
+    # expectation written from a constant silently dropped it, and the first device run
+    # called a byte-correct extraction "changed". The expected bytes are therefore
+    # materialised from the archive by the device's own unzip: the judgement is "the host
+    # reproduced the member", and it cannot drift from the fixture. (The rehearsal could not
+    # see this -- its synthetic world wrote both sides with printf '%s' and so agreed with
+    # itself.)
+    unzip -p "$FIX/f_tree.zip" 'a/keep.txt' > "$RD/.exp_keep"
+    unzip -p "$FIX/f_tree.zip" 'dir/empty.txt' > "$RD/.exp_empty"
+
+    # One source only: each expectation must equal the size the archive itself reports for
+    # that member. Pinning 5 and 6 here would be a second copy that goes stale the day the
+    # fixture is re-cut -- the same silent-failure shape this edit is closing.
+    [ "$(unzip -l "$FIX/f_tree.zip" | awk '$4=="a/keep.txt"{print $1}')" = "$(wc -c < "$RD/.exp_keep" | tr -d ' ')" ] ||
+        { echo "FAIL .exp_keep is not the size the archive reports for a/keep.txt" >&2; exit 1; }
+    [ "$(unzip -l "$FIX/f_tree.zip" | awk '$4=="dir/empty.txt"{print $1}')" = "$(wc -c < "$RD/.exp_empty" | tr -d ' ')" ] ||
+        { echo "FAIL .exp_empty is not the size the archive reports for dir/empty.txt" >&2; exit 1; }
 
     # Case 4's destination: an existing FILE where a directory is needed, plus the copy of its
     # bytes that the judgement compares against (so "the refusal left the file alone" is measured
