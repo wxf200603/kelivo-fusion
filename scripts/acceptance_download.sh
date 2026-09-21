@@ -46,16 +46,25 @@ DIAG="$FILES/operit_js_diag.log"
 BB=${BB:-/data/adb/ksu/bin/busybox}
 
 RD="$BASE/dl"
-WEB="$RD/web"
+# The web root and the CGI live under /data/local/tmp, NOT on /sdcard: the sdcard fuse mount is
+# noexec (measured: `/sdcard/x.sh` -> "can't execute: Permission denied", the same file under
+# /data/local/tmp runs), so a CGI on /sdcard never executes and busybox httpd answers around it.
+# The destinations stay on /sdcard, which is where the host under test writes.
+WEB_ROOT=${WEB_ROOT:-/data/local/tmp/operit-selftest-dl}
+WEB="$WEB_ROOT/web"
 CGI="$WEB/cgi-bin"
 OUT="$RD/out"
-HDRLOG="$RD/hdrs.txt"
-PIDFILE="$RD/httpd.pid"
+HDRLOG="$WEB_ROOT/hdrs.txt"
+PIDFILE="$WEB_ROOT/httpd.pid"
 
-PORT=${PORT:-8765}
-REFUSE=${REFUSE:-8766}
-URL="http://127.0.0.1:$PORT"
-BADURL="$URL/nope.txt"
+PORT=${PORT:-18080}
+REFUSE=${REFUSE:-18099}
+# URL is set by start_server() once a port is CONFIRMED to serve OUR bytes. Port 8765 is not
+# usable on this device: the local LLM API listens there and answers 401. That is exactly the
+# foreign server a fixture check must not mistake for its own, so the check below is the body,
+# never the connect.
+URL=""
+BADURL=""
 REFUSEURL="http://127.0.0.1:$REFUSE/ok.txt"
 
 D1="$OUT/c1"
@@ -175,18 +184,55 @@ start_server() {
     # The fixtures are files + tiny CGI scripts, served by the device's own busybox httpd. The host
     # under test reaches 127.0.0.1:$PORT because it runs on the same device; the refused case uses
     # $REFUSE, where nothing is listening.
-    "$BB" httpd -p "127.0.0.1:$PORT" -h "$WEB" >/dev/null 2>&1 &
-    echo $! > "$PIDFILE"
-    sleep 1
+    #
+    # One candidate port at a time, and a candidate only counts if its /ok.txt returns OUR bytes.
+    # A port already taken by something else must not be mistaken for the fixture -- the first
+    # device run of this round did exactly that: the local LLM API held 8765 and answered 401, and
+    # a `curl -s -o /dev/null` (no -f) reported success, so the round ran against a server that was
+    # never ours. The judgement here is the body.
+    tried=""
+    p=$PORT
+    n=0
+    while [ "$n" -lt 20 ]; do
+        "$BB" httpd -p "127.0.0.1:$p" -h "$WEB" >/dev/null 2>&1 &
+        pid=$!
+        sleep 1
+        body=$(curl -s --max-time 2 "http://127.0.0.1:$p/ok.txt" 2>/dev/null)
+        if [ "$body" = "$C_OK" ]; then
+            PORT=$p
+            URL="http://127.0.0.1:$PORT"
+            BADURL="$URL/nope.txt"
+            echo "$pid" > "$PIDFILE"
+            echo "ok   fixture server on $URL (web=$WEB pid=$pid)"
+            return 0
+        fi
+        kill "$pid" 2>/dev/null
+        tried="$tried $p"
+        n=$((n + 1))
+        p=$((p + 1))
+    done
+    echo "FAIL no port served the fixture (tried:$tried). Something else answers there, or" >&2
+    echo "     busybox httpd cannot serve $WEB. Stopping." >&2
+    return 1
 }
 
 stop_server() {
+    # Two ways, because a pidfile can be orphaned: this round moved PIDFILE once, and a previous
+    # round's httpd kept serving its (by then deleted) web root, so a later start_server found the
+    # port taken, moved on, and -- with the stale home gone -- answered 404. Only processes whose
+    # command line names OUR port range are touched; anything else on the device is left alone.
+    stopped=0
     if [ -f "$PIDFILE" ]; then
-        kill "$(cat "$PIDFILE")" 2>/dev/null
+        kill "$(cat "$PIDFILE")" 2>/dev/null && stopped=1
         rm -f "$PIDFILE"
+    fi
+    for p in $(ps -A -o PID,ARGS 2>/dev/null | grep -e 'busybox httpd' | grep -e '127.0.0.1:180' | grep -v grep | awk '{print $1}'); do
+        kill "$p" 2>/dev/null && stopped=1
+    done
+    if [ "$stopped" = "1" ]; then
         echo "fixture server stopped"
     else
-        echo "no fixture server pid recorded"
+        echo "no fixture server was running"
     fi
 }
 
@@ -198,7 +244,7 @@ setup() {
     }
     stop_server >/dev/null 2>&1
     rm -rf "$RD"
-    mkdir -p "$OUT" "$CGI"
+    mkdir -p "$OUT" "$CGI" "$WEB_ROOT"
 
     # --- fixtures -------------------------------------------------------------------------------
     printf '%s' "$C_OK" > "$WEB/ok.txt"
@@ -237,12 +283,15 @@ EOF
         fi
     done
 
-    start_server
-    if ! curl -s -o /dev/null "$URL/ok.txt"; then
-        echo "FAIL the fixture server on $URL did not answer -- stopping" >&2
+    # The refused-case port must be genuinely empty, or case 9 would be vacuous: a `curl`
+    # that CONNECTS (exit 0) means something is listening there already.
+    if curl -s --max-time 2 "http://127.0.0.1:$REFUSE/ok.txt" >/dev/null 2>&1; then
+        echo "FAIL the refused-case port $REFUSE is already serving -- case 9 would be vacuous." >&2
+        echo "     Set REFUSE=<free port> and re-run setup." >&2
         exit 1
     fi
-    echo "ok   fixture server on $URL (web=$WEB)"
+    echo "ok   refused-case port $REFUSE is free"
+    start_server || exit 1
 
     mkdir -p "$FILES"
     cat > "$MARKER" <<EOF
@@ -350,17 +399,23 @@ verify() {
     c3_bytes=$(cmp_ok "$D3" "$RD/.exp_ok"); c3=FAIL
     [ "$(is_ok "$L3")" = yes ] && [ "$c3_bytes" = intact ] && c3=PASS
 
+    # A failure line must satisfy is_fail; the VERDICT is PASS/FAIL, never the helper's yes/no.
+    # (The first run of this driver printed "-> yes" and still ended "not all passing": the
+    # assignments held yes/no while the final condition compared against PASS. A judgement whose
+    # displayed value is not the value it decides on is exactly the shape this repo keeps fixing.)
+    judge() { if [ "$(is_fail "$1" "$2")" = yes ]; then echo PASS; else echo FAIL; fi; }
+
     # --- case 4: scheme -----------------------------------------------------------------------------
-    c4=$(is_fail "$L4" 'URL must start with http:// or https://')
+    c4=$(judge "$L4" 'URL must start with http:// or https://')
 
     # --- cases 5/6: the two missing-parameter sentences ---------------------------------------------
-    c5=$(is_fail "$L5" 'Either url or (visit_key + link_number/image_number) is required')
-    c6=$(is_fail "$L6" 'URL and destination parameters are required')
+    c5=$(judge "$L5" 'Either url or (visit_key + link_number/image_number) is required')
+    c6=$(judge "$L6" 'URL and destination parameters are required')
 
     # --- cases 7/8/9: transport failures, answered not thrown ---------------------------------------
-    c7=$(is_fail "$L7" 'Error downloading file: HTTP 404')
-    c8=$(is_fail "$L8" 'Error downloading file: HTTP 500')
-    c9=$(is_fail "$L9" 'Error downloading file: ')
+    c7=$(judge "$L7" 'Error downloading file: HTTP 404')
+    c8=$(judge "$L8" 'Error downloading file: HTTP 500')
+    c9=$(judge "$L9" 'Error downloading file: ')
 
     # --- case 10: headers honoured ------------------------------------------------------------------
     c10_seen=no
@@ -373,10 +428,17 @@ verify() {
     [ "$(is_ok "$L11")" = yes ] && c11=PASS
 
     # --- case 12: the write fails -> answered, not thrown -------------------------------------------
-    c12=$(is_fail "$L12" 'Error downloading file: ')
+    c12=$(judge "$L12" 'Error downloading file: ')
 
     c13=FAIL
     [ "$threw" = "0" ] && c13=PASS
+
+    # --- case 14: the fixture is stopped here, and its port is released -----------------------------
+    stop_server >/dev/null 2>&1
+    sleep 1
+    after_stop=$(curl -s --max-time 2 "$URL/ok.txt" 2>/dev/null)
+    c14=FAIL
+    [ "$after_stop" != "$C_OK" ] && c14=PASS
 
     echo "case  call                                expected                                       actual"
     printf '%-5s %-37s %-46s %s\n' 1 '(plain)' 'success; bytes identical' "success=$(is_ok "$L1") bytes=$c1_bytes -> $c1"
@@ -392,6 +454,7 @@ verify() {
     printf '%-5s %-37s %-46s %s\n' 11 '(headers bad)' 'success; headers ignored' "success=$(is_ok "$L11") -> $c11"
     printf '%-5s %-37s %-46s %s\n' 12 '(dest is dir)' 'successful=false; Error downloading file:' "-> $c12"
     printf '%-5s %-37s %-46s %s\n' 13 '(non-throwing)' 'no case threw' "threw=$threw -> $c13"
+    printf '%-5s %-37s %-46s %s\n' 14 '(fixture stopped)' 'no residual listener on the fixture port' "after_stop=${after_stop:-<none>} -> $c14"
 
     echo
     echo "evidence (last 12 of $n download lines this round, log offset $offset):"
@@ -401,8 +464,8 @@ verify() {
     if [ "$c1" = PASS ] && [ "$c2" = PASS ] && [ "$c3" = PASS ] && [ "$c4" = PASS ] &&
         [ "$c5" = PASS ] && [ "$c6" = PASS ] && [ "$c7" = PASS ] && [ "$c8" = PASS ] &&
         [ "$c9" = PASS ] && [ "$c10" = PASS ] && [ "$c11" = PASS ] && [ "$c12" = PASS ] &&
-        [ "$c13" = PASS ]; then
-        echo "all cases PASS (12 runtime + 1 non-throwing)."
+        [ "$c13" = PASS ] && [ "$c14" = PASS ]; then
+        echo "all cases PASS (12 runtime + non-throwing + fixture stopped)."
         return 0
     fi
     echo "not all passing -- see the rows above." >&2
@@ -419,6 +482,7 @@ verify() {
     [ "$c11" = FAIL ] && echo "  case 11: wanted a success with malformed headers ignored (fail-open)" >&2
     [ "$c12" = FAIL ] && echo "  case 12: wanted 'Error downloading file: <msg>' for a destination that is a directory" >&2
     [ "$c13" = FAIL ] && echo "  case 13 (the round's key case): wanted ZERO THREW lines; this method answers failures." >&2
+    [ "$c14" = FAIL ] && echo "  case 14: the fixture port still serves our bytes after stop -- a listener was left behind." >&2
     return 1
 }
 
