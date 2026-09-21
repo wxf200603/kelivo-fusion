@@ -87,7 +87,7 @@ class OperitHostDispatcher(
 由于 compat script 是 `Proxy` + 方法名字符串：
 
 - ✅ **31 个 JS 包一行都不用改**
-- ✅ 新增一个包 = 往 `assets/packages/` 丢一个 `.js` + 补几个 dispatch 分支
+- ✅ 新增一个包 = 往 `assets/operit_packages/` 丢一个 `.js` + 补几个 dispatch 分支
 - ✅ 未实现的 API 可返回 `NotSupported`，AI 收到可读错误而非崩溃
 - ✅ 升级 Operit 的 JS 包只需覆盖文件
 
