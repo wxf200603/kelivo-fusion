@@ -24,7 +24,8 @@
 #
 # The failure of case 3 arrives as a `THREW: ...` line in the diagnostic log, the
 # same as the other rounds: the dispatcher rethrows for this method (the Files
-# family set in OperitHostDispatcher.kt -- `throwingMethods`, now six members).
+# family set in OperitHostDispatcher.kt -- `throwingMethods`). No count is given
+# on purpose: the list gains one member per Files method.
 #
 # The payload is a single JSON object whose only field is `fileType`, exactly
 # "file" or "directory". Nothing else is promised and nothing else is checked.

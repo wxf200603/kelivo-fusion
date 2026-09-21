@@ -244,9 +244,9 @@ class OperitHostDispatcher(
         /**
          * Methods that surface a failure as a JS throw instead of an error object.
          *
-         * This started with Files.deleteFile and now includes Files.readBinary,
-         * Files.writeBinary, Files.read, Files.list, Files.info, Files.copy,
-         * Files.move and Files.zip. The Files family convention is: file
+         * This started with Files.deleteFile and has grown with each Files method.
+         * `throwingMethods` below is the list, and the only place the membership is
+         * written down. The Files family convention is: file
          * operations that touch the real filesystem
          * throw on failure, because (a) callers wrap them in try/catch and expect the
          * throw, and (b) returning an error object degrades the failure into a
