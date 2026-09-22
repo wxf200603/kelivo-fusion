@@ -77,7 +77,7 @@ internal object EditMatchers {
         replaceAll: Boolean = false,
     ): EditOutcome {
         if (oldText.isEmpty()) return EditFailed(EditNotFound, EDIT_NOT_FOUND_MESSAGE)
-        for (strategy in EditStrategy.values()) {
+        for (strategy in EditStrategy.entries) {
             val matches = findMatches(original, oldText, newText, strategy)
             if (matches.isEmpty()) continue
             if (!replaceAll && matches.size > 1) {
