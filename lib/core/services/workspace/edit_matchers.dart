@@ -1,3 +1,9 @@
+// NOTE (Kotlin sync): the host ports these primitives as `EditMatchers`
+// (`android/.../workspace/edit/EditMatchers.kt`) because the Kotlin -> Dart
+// callback channel does not exist, so `Tools.Files.apply` is answered on the
+// Kotlin side. Change one file and change the other, and keep
+// `EditMatchersTest.kt` in step with `edit_matchers_test.dart`.
+
 /// How [applyEdit] located [oldText] inside the original file.
 enum EditStrategy {
   exact,
