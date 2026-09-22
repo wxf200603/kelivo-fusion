@@ -6,6 +6,9 @@ import com.psyche.kelivo.quickjs.KelivoHost
 import com.psyche.kelivo.shell.RootShell
 import com.psyche.kelivo.shell.ShizukuShell
 import com.psyche.kelivo.shell.readCapped
+import com.psyche.kelivo.workspace.edit.EditApplied
+import com.psyche.kelivo.workspace.edit.EditFailed
+import com.psyche.kelivo.workspace.edit.EditMatchers
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedOutputStream
@@ -1014,6 +1017,63 @@ class KelivoWorkspaceHost(
         // Not a .size / .encoding / .truncated payload: no call site reads anything but
         // `content` (code_runner.js:828, file_converter.js:191, operit_editor.js:2615).
         return JSONObject().put("content", text)
+    }
+    /**
+     * Applies a structured edit to the file at [path] (Files family tool #15).
+     *
+     * The real host-side implementation behind `Tools.Files.apply`. The matching
+     * primitives live in
+     * [com.psyche.kelivo.workspace.edit.EditMatchers], ported from
+     * `lib/core/services/workspace/edit_matchers.dart` because the Kotlin host
+     * cannot call back into Dart (decision D6).
+     *
+     * [op] is `"replace"` or `"delete"`. The delete form is a replace whose
+     * payload is empty (decision D3), so both paths share one code path once
+     * the replacement text has been chosen.
+     *
+     * Same existence stance as [fileRead]: a directory is caught before
+     * `isFile`, and a missing file answers with the errno name the rest of this
+     * class uses. The edit is atomic - the primitives build the whole updated
+     * string and return it, and nothing is written until an [EditApplied] comes
+     * back, so a failed anchor leaves the file exactly as it was.
+     */
+    override fun fileApply(
+        path: String,
+        op: String,
+        oldText: String,
+        newText: String,
+    ): JSONObject {
+        val target = File(path)
+        if (target.isDirectory) {
+            throw IOException("EISDIR: is a directory: $path")
+        }
+        if (!target.isFile) {
+            throw FileNotFoundException("ENOENT: no such file or directory: $path")
+        }
+        val replacement = when (op) {
+            "replace" -> newText
+            "delete" -> ""
+            else -> throw IllegalArgumentException(
+                "EINVAL: unknown apply op '$op' (expected \"replace\" or \"delete\")"
+            )
+        }
+        // Strict UTF-8, same as fileRead: a lenient decode would turn bad bytes
+        // into U+FFFD and let the damage read as a content problem.
+        val original = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(target.readBytes()))
+            .toString()
+        return when (val outcome = EditMatchers.applyEdit(original, oldText, replacement)) {
+            is EditApplied -> {
+                target.writeText(outcome.updated)
+                JSONObject()
+                    .put("changed", outcome.updated != original)
+                    .put("replacements", outcome.replacements)
+                    .put("strategy", outcome.strategy.id)
+            }
+            is EditFailed -> throw IOException("EAPPLYFAILED: ${outcome.message}")
+        }
     }
 
     override fun fileList(path: String): JSONObject {

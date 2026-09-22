@@ -90,6 +90,23 @@ class OperitHostDispatcher(
                     null
                 }
 
+                "Tools.Files.apply" -> {
+                    // Wire form: apply(path, op, oldText, newText, environment)
+                    // (github.js:790 applyLocalReplace, github.js:793 applyLocalDelete).
+                    // `op` is "replace" or "delete"; the delete path passes `void 0`
+                    // for newText, which arrives as JSON null and maps to "" (D3).
+                    // args[4] would be `environment`; deliberately not read, as in
+                    // the rest of this family - one host, one namespace, nothing to
+                    // route on.
+                    val a = args ?: JSONArray()
+                    host.fileApply(
+                        a.optString(0),
+                        a.optString(1),
+                        a.optString(2),
+                        if (a.isNull(3)) "" else a.optString(3),
+                    ).toString()
+                }
+
                 "Tools.Files.exists" -> {
                     host.fileExists(
                         args?.optString(0).orEmpty(),
@@ -282,6 +299,7 @@ class OperitHostDispatcher(
             "Tools.Files.move",
             "Tools.Files.zip",
             "Tools.Files.unzip",
+            "Tools.Files.apply",
         )
     }
 

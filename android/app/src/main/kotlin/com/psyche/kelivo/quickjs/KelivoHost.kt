@@ -509,4 +509,29 @@ interface KelivoHost {
         environment: String?,
         headers: JSONObject?,
     ): JSONObject
+
+    /**
+     * Applies a structured edit to the file at [path] (Files family tool #15).
+     *
+     * Wire form: `Tools.Files.apply(path, op, oldText, newText, environment)`
+     * (`github.js:790` applyLocalReplace, `github.js:793` applyLocalDelete).
+     * [op] is `"replace"` or `"delete"`; on the delete path the wrapper passes
+     * `void 0` for newText, which the dispatcher maps to `""` (decision D3:
+     * delete is a replace with an empty payload).
+     *
+     * `environment` is not read: one host, one namespace, nothing to route on -
+     * the same stance as every other environment in this family.
+     *
+     * Returns `{changed, replacements, strategy}` on success, where `strategy`
+     * is one of `exact` / `line_trimmed` / `block_anchor`. Throws when the
+     * file is missing or the edit cannot be located: this method touches the
+     * real filesystem, so it follows this family's convention (see
+     * [fileDelete]).
+     *
+     * Why Kotlin and not Dart: there is no callback channel from the Kotlin
+     * host back to the Dart layer, so `edit_matchers.dart` cannot be reused
+     * here. The matching primitives live in
+     * [com.psyche.kelivo.workspace.edit.EditMatchers] instead.
+     */
+    fun fileApply(path: String, op: String, oldText: String, newText: String): JSONObject
 }
